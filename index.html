@@ -99,6 +99,8 @@
     Deliverable: "#9BFF3A",
     Demonstration: "#FFD34A",
     Innovation: "#FF7A00",
+    Phase: "#A3A9FF",
+    CircularPath: "#B8BFFF",
     Other: "#A3A9FF"
   };
 
@@ -122,10 +124,7 @@
 
   let cy;
 
-  function unwrapNeo4jBrowserJson(raw) {
-    if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
-    return raw?.elements ?? null;
-  }
+  // ---------- FIX: accept Neo4j Browser "rows" JSON ({n,r,m}) OR "elements" JSON ----------
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -133,39 +132,140 @@
     return String(v);
   }
 
-function pickNodeLabel(d) {
-  const labels = d.labels || [];
-  const label = labels[0] || "Other";
-  const p = d.properties || {};
+  function neoId(x) {
+    if (x == null) return null;
+    if (typeof x === "string" || typeof x === "number") return String(x);
 
-  // ✅ Material nodes: prefer "material", then "name"
-  if (label === "Material") {
-    return asNiceText(p.material) || asNiceText(p.name) || asNiceText(d.id);
+    // Most common export variants
+    if (x.elementId) return String(x.elementId);
+
+    if (x.identity != null) {
+      if (typeof x.identity === "number" || typeof x.identity === "string") return String(x.identity);
+      if (typeof x.identity === "object" && x.identity.low != null) return String(x.identity.low);
+    }
+
+    if (x.id != null) {
+      if (typeof x.id === "number" || typeof x.id === "string") return String(x.id);
+      if (typeof x.id === "object" && x.id.low != null) return String(x.id.low);
+    }
+
+    return null;
   }
 
-  // ✅ ValueChainStage nodes: show "name", optionally include material
-  if (label === "ValueChainStage") {
-    const stage = asNiceText(p.name);
-    const mat = asNiceText(p.material);
-    return (stage && mat) ? `${stage} (${mat})` : (stage || mat || asNiceText(d.id));
+  // Convert [{n:{...}, r:{...}, m:{...}}, ...] into Cytoscape elements
+  function rowsNrmToElements(rows) {
+    const nodeMap = new Map();
+    const edgeMap = new Map();
+
+    function addNode(nodeObj) {
+      if (!nodeObj) return null;
+
+      const id = neoId(nodeObj);
+      if (!id) return null;
+
+      if (!nodeMap.has(id)) {
+        const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
+        const properties = nodeObj.properties || {};
+
+        nodeMap.set(id, {
+          data: {
+            id,
+            labels,
+            properties
+          }
+        });
+      }
+      return id;
+    }
+
+    function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
+      if (!relObj) return;
+
+      const rid = neoId(relObj) || `rel_${edgeMap.size}`;
+      const source = neoId(relObj.startNode) || neoId(relObj.start) || fallbackSourceId;
+      const target = neoId(relObj.endNode) || neoId(relObj.end) || fallbackTargetId;
+      const type = relObj.type || relObj.label || "REL";
+
+      // de-dupe edges in case export repeats rows
+      const key = `${rid}|${source}|${target}|${type}`;
+      if (edgeMap.has(key)) return;
+
+      edgeMap.set(key, {
+        data: {
+          id: rid,
+          source,
+          target,
+          type
+        }
+      });
+    }
+
+    rows.forEach(row => {
+      const n = row.n || row.from || row.a || row.sourceNode;
+      const m = row.m || row.to   || row.b || row.targetNode;
+      const r = row.r || row.rel  || row.e || row.relationship;
+
+      const nId = addNode(n);
+      const mId = addNode(m);
+
+      // add any other node-like objects in the row too (just in case)
+      Object.values(row).forEach(v => {
+        if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
+      });
+
+      addEdge(r, nId, mId);
+    });
+
+    return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
   }
 
-  if (label === "Partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(d.id);
-  if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
-  if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
-  if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
+  function unwrapAnyNeo4jJson(raw) {
+    // Case A: Neo4j Browser "json.elements"
+    if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
 
-  if (label === "Phase") {
-    return asNiceText(p.phase_id)
-      || asNiceText(p.phases)
-      || asNiceText(p.name)
-      || asNiceText(d.id);
+    // Case B: already in {elements:{nodes,edges}}
+    if (raw?.elements?.nodes && (raw.elements.edges || raw.elements.relationships)) return raw.elements;
+
+    // Case C: plain array of rows [{n,r,m}, ...]
+    if (Array.isArray(raw) && raw.length && typeof raw[0] === "object") {
+      const el = rowsNrmToElements(raw);
+      return { nodes: el.nodes, edges: el.edges };
+    }
+
+    // Case D: sometimes Neo4j Browser exports {results:[{data:[{row:[...]}]}]} (rare)
+    // If you ever hit this, tell me and I'll adapt.
+
+    return null;
   }
+  // --------------------------------------------------------------------------------------
 
-  return asNiceText(p.name) || asNiceText(d.id);
-}
+  function pickNodeLabel(d) {
+    const labels = d.labels || [];
+    const label = labels[0] || "Other";
+    const p = d.properties || {};
 
+    if (label === "Material") {
+      return asNiceText(p.material) || asNiceText(p.name) || asNiceText(d.id);
+    }
+    if (label === "ValueChainStage") {
+      const stage = asNiceText(p.name);
+      const mat = asNiceText(p.material);
+      return (stage && mat) ? `${stage} (${mat})` : (stage || mat || asNiceText(d.id));
+    }
+    if (label === "Partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(d.id);
+    if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
+    if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
+    if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
 
+    if (label === "Phase") {
+      return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
+    }
+    if (label === "CircularPath" || label === "Path") {
+      return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
+    }
+
+    return asNiceText(p.name) || asNiceText(d.id);
+  }
 
   function sizeForLabel(label) {
     if (label === "Material") return 24;
@@ -174,6 +274,8 @@ function pickNodeLabel(d) {
     if (label === "Deliverable") return 22;
     if (label === "Demonstration") return 21;
     if (label === "Innovation") return 21;
+    if (label === "Phase") return 18;
+    if (label === "CircularPath" || label === "Path") return 20;
     return 16;
   }
 
@@ -227,18 +329,15 @@ function pickNodeLabel(d) {
     return null;
   }
 
-  // ✅ HARD FORCE: hide everything except hubs (including ALL edges) at load and on Home
   function homeView(force=true) {
     if (force) {
       cy.nodes('[kind="real"]').addClass("hidden");
       cy.edges().addClass("hidden");
-      // also hide any synthetic hub edges from previous explorations
       cy.edges('[kind="hubEdge"]').remove();
     }
 
     cy.$('node[kind="hub"]').removeClass("hidden");
 
-    // ✅ perfect circle arrangement
     const w = cy.width(), h = cy.height();
     const cx = w * 0.47;
     const cyy = h * 0.55;
@@ -261,11 +360,9 @@ function pickNodeLabel(d) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
-    // hide all real nodes + all real edges
     cy.nodes('[kind="real"]').addClass("hidden");
     cy.edges().addClass("hidden");
 
-    // show hubs
     cy.$('node[kind="hub"]').removeClass("hidden");
 
     const hub = cy.getElementById(hubId);
@@ -274,7 +371,6 @@ function pickNodeLabel(d) {
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
-    // remove old hub edges and recreate only for this category
     cy.edges('[kind="hubEdge"]').remove();
 
     const newEdges = [];
@@ -284,10 +380,8 @@ function pickNodeLabel(d) {
     });
     if (newEdges.length) cy.add(newEdges);
 
-    // show only hub edges
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-    // ring around hub (outside it)
     const nodes = group.toArray();
     const radius = 260;
     const startAngle = -Math.PI / 2;
@@ -302,7 +396,6 @@ function pickNodeLabel(d) {
       `<div class="muted"><b>${label}</b> opened. Single click nodes for details. Double click a node to expand neighbors.</div>`;
   }
 
-  // Expand only around clicked node (not global)
   function expandRealNeighbors(node) {
     node.removeClass("hidden");
     const realEdges = node.connectedEdges().filter(e => e.data("kind")!=="hubEdge");
@@ -326,7 +419,6 @@ function pickNodeLabel(d) {
     cy.animate({ center: { eles: node } }, { duration: 160 });
   }
 
-  // Double click detection
   let lastTapTime = 0;
   let lastTapId = null;
   function handleTap(ele) {
@@ -342,26 +434,29 @@ function pickNodeLabel(d) {
     else expandRealNeighbors(ele);
   }
 
-  // relationship labels: show on hover-focus + when zoomed in
   const EDGE_LABEL_ZOOM = 1.05;
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
-    if (z >= EDGE_LABEL_ZOOM) {
-      cy.edges().addClass("show-edge-labels");
-    } else {
-      cy.edges().removeClass("show-edge-labels");
-    }
+    if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
+    else cy.edges().removeClass("show-edge-labels");
   }
 
   async function main() {
+    // graph.json must be in the SAME folder as index.html on GitHub Pages
     const res = await fetch("./graph.json", { cache: "no-store" });
+    if (!res.ok) {
+      document.getElementById("details").innerHTML =
+        `<b>Error</b><br><br>Could not load <code>graph.json</code> (${res.status}). Make sure it is in the repo root next to index.html.`;
+      return;
+    }
+
     const raw = await res.json();
-    const elements = unwrapNeo4jBrowserJson(raw);
+    const elements = unwrapAnyNeo4jJson(raw);
 
     const edgeList = elements?.edges || elements?.relationships;
     if (!elements?.nodes || !edgeList) {
       document.getElementById("details").innerHTML =
-        "<b>Error</b><br><br>graph.json missing elements.nodes and elements.edges/relationships.";
+        "<b>Error</b><br><br>graph.json is not in a supported Neo4j export format. (Need elements.nodes+edges OR rows like n/r/m).";
       return;
     }
 
@@ -376,13 +471,13 @@ function pickNodeLabel(d) {
       return {
         data: {
           ...d,
-          source: d.source || d.startNode,
-          target: d.target || d.endNode,
+          source: d.source || d.startNode || d.start,
+          target: d.target || d.endNode || d.end,
           label: d.type || d.label || "REL",
           kind: "realEdge"
         }
       };
-    });
+    }).filter(e => e.data.source && e.data.target); // drop broken edges
 
     const hubNodes = HUBS.map(h => ({
       data: { id:h.id, label:h.label, title:h.title, color:HUB_COLORS[h.label] || "#B8BFFF", size:125, kind:"hub" }
@@ -506,7 +601,6 @@ function pickNodeLabel(d) {
       }
     });
 
-    // ✅ ALWAYS start clean:
     homeView(true);
   }
 
@@ -517,5 +611,3 @@ function pickNodeLabel(d) {
 </script>
 </body>
 </html>
-
-
