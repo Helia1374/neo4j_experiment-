@@ -282,27 +282,56 @@
   function colorForLabel(label) { return COLORS[label] || COLORS.Other; }
 
   function showDetails(ele) {
-    const d = ele.data();
-    const head = `
-      <div style="font-weight:700; font-size:16px; margin-bottom:6px;">${d.title || d.label || "Node"}</div>
-      <div class="muted">Type: <code>${d.label || "Node"}</code></div>
-      <hr />
-    `;
-    if (d.kind === "hub") {
-      document.getElementById("details").innerHTML = head + `
-        <div class="muted">
-          Category hub (visual-only).<br><br>
-          <b>Double click</b> to reveal nodes in this category.
-        </div>`;
-      return;
-    }
-    const rows = Object.entries(d)
-      .filter(([k]) => !["color","title","kind","_placed","size"].includes(k))
-      .sort((a,b) => a[0].localeCompare(b[0]))
-      .map(([k,v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${asNiceText(v)}</div></div>`)
-      .join("");
-    document.getElementById("details").innerHTML = head + (rows || `<div class="muted">No properties</div>`);
+  const d = ele.data();
+  const head = `
+    <div style="font-weight:700; font-size:16px; margin-bottom:6px;">${d.title || d.label || "Node"}</div>
+    <div class="muted">Type: <code>${d.label || "Node"}</code></div>
+    <hr />
+  `;
+
+  if (d.kind === "hub") {
+    document.getElementById("details").innerHTML = head + `
+      <div class="muted">
+        Category hub (visual-only).<br><br>
+        <b>Double click</b> to reveal nodes in this category.
+      </div>`;
+    return;
   }
+
+  // 1) Top-level fields (but exclude raw properties object)
+  const topRows = Object.entries(d)
+    .filter(([k]) => !["color","title","kind","_placed","size","properties"].includes(k))
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([k,v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${asNiceText(v)}</div></div>`)
+    .join("");
+
+  // 2) Expand properties nicely
+  const props = d.properties || {};
+  const propRows = Object.entries(props)
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([k,v]) => {
+      // Make URLs clickable
+      const text = asNiceText(v);
+      const isUrl = typeof v === "string" && /^https?:\/\/|^mailto:|^doi:/i.test(v);
+      const isDoi = typeof v === "string" && /^10\.\d{4,9}\//.test(v);
+      const link = isUrl
+        ? `<a href="${v}" target="_blank" rel="noopener noreferrer">${text}</a>`
+        : (isDoi
+            ? `<a href="https://doi.org/${v}" target="_blank" rel="noopener noreferrer">${text}</a>`
+            : text);
+      return `<div class="kv"><div class="k">${k}</div><div class="v">${link}</div></div>`;
+    })
+    .join("");
+
+  const html =
+    head +
+    (topRows || "") +
+    (propRows
+      ? `<div class="muted" style="margin-top:10px; font-weight:700;">Properties</div>${propRows}`
+      : `<div class="muted">No properties</div>`);
+
+  document.getElementById("details").innerHTML = html;
+}
 
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
@@ -611,3 +640,4 @@
 </script>
 </body>
 </html>
+
