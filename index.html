@@ -153,71 +153,7 @@
   }
 
   // Convert [{n:{...}, r:{...}, m:{...}}, ...] into Cytoscape elements
-  function rowsNrmToElements(rows) {
-    const nodeMap = new Map();
-    const edgeMap = new Map();
-
-    function addNode(nodeObj) {
-      if (!nodeObj) return null;
-
-      const id = neoId(nodeObj);
-      if (!id) return null;
-
-      if (!nodeMap.has(id)) {
-        const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
-        const properties = nodeObj.properties || {};
-
-        nodeMap.set(id, {
-          data: {
-            id,
-            labels,
-            properties
-          }
-        });
-      }
-      return id;
-    }
-
-    function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
-      if (!relObj) return;
-
-      const rid = neoId(relObj) || `rel_${edgeMap.size}`;
-      const source = neoId(relObj.startNode) || neoId(relObj.start) || fallbackSourceId;
-      const target = neoId(relObj.endNode) || neoId(relObj.end) || fallbackTargetId;
-      const type = relObj.type || relObj.label || "REL";
-
-      // de-dupe edges in case export repeats rows
-      const key = `${rid}|${source}|${target}|${type}`;
-      if (edgeMap.has(key)) return;
-
-      edgeMap.set(key, {
-        data: {
-          id: rid,
-          source,
-          target,
-          type
-        }
-      });
-    }
-
-    rows.forEach(row => {
-      const n = row.n || row.from || row.a || row.sourceNode;
-      const m = row.m || row.to   || row.b || row.targetNode;
-      const r = row.r || row.rel  || row.e || row.relationship;
-
-      const nId = addNode(n);
-      const mId = addNode(m);
-
-      // add any other node-like objects in the row too (just in case)
-      Object.values(row).forEach(v => {
-        if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
-      });
-
-      addEdge(r, nId, mId);
-    });
-
-    return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
-  }
+ 
 
   function unwrapAnyNeo4jJson(raw) {
     // Case A: Neo4j Browser "json.elements"
@@ -238,7 +174,99 @@
     return null;
   }
   // --------------------------------------------------------------------------------------
+function rowsNrmToElements(rows) {
+  const nodeMap = new Map();        // elementId -> node
+  const idMap = new Map();          // numeric identity -> elementId
+  const edgeMap = new Map();
 
+  function getNumericIdentity(obj) {
+    if (!obj) return null;
+    const id = obj.identity ?? obj.id;
+    if (id == null) return null;
+    if (typeof id === "number" || typeof id === "string") return String(id);
+    if (typeof id === "object" && id.low != null) return String(id.low);
+    return null;
+  }
+
+  function addNode(nodeObj) {
+    if (!nodeObj) return null;
+
+    // prefer elementId as the Cytoscape node id
+    const elementId = neoId(nodeObj);
+    if (!elementId) return null;
+
+    if (!nodeMap.has(elementId)) {
+      const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
+      const properties = nodeObj.properties || {};
+      nodeMap.set(elementId, { data: { id: elementId, labels, properties } });
+
+      // store mapping from numeric identity -> elementId if available
+      const numId = getNumericIdentity(nodeObj);
+      if (numId) idMap.set(numId, elementId);
+    }
+
+    return elementId;
+  }
+
+  function resolveEndpoint(x) {
+    if (x == null) return null;
+
+    // already a usable string id
+    if (typeof x === "string") return x;
+    if (typeof x === "number") return idMap.get(String(x)) || String(x);
+
+    // might be {low,high} or object carrying identity/elementId
+    const maybeElement = neoId(x);
+    if (maybeElement && nodeMap.has(maybeElement)) return maybeElement;
+
+    const maybeNum = getNumericIdentity(x);
+    if (maybeNum && idMap.has(maybeNum)) return idMap.get(maybeNum);
+
+    // some exports use startNode/endNode as numeric directly inside objects
+    if (x.low != null && idMap.has(String(x.low))) return idMap.get(String(x.low));
+
+    return null;
+  }
+
+  function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
+    if (!relObj) return;
+
+    const rid = neoId(relObj) || `rel_${edgeMap.size}`;
+    const type = relObj.type || relObj.label || "REL";
+
+    // try multiple endpoint fields
+    const rawS = relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from;
+    const rawT = relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to;
+
+    const source = resolveEndpoint(rawS) || fallbackSourceId;
+    const target = resolveEndpoint(rawT) || fallbackTargetId;
+
+    if (!source || !target) return; // drop broken edges
+
+    const key = `${rid}|${source}|${target}|${type}`;
+    if (edgeMap.has(key)) return;
+
+    edgeMap.set(key, { data: { id: rid, source, target, type } });
+  }
+
+  rows.forEach(row => {
+    const n = row.n || row.from || row.a || row.sourceNode;
+    const m = row.m || row.to   || row.b || row.targetNode;
+    const r = row.r || row.rel  || row.e || row.relationship;
+
+    const nId = addNode(n);
+    const mId = addNode(m);
+
+    // add any other node-like objects in the row
+    Object.values(row).forEach(v => {
+      if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
+    });
+
+    addEdge(r, nId, mId);
+  });
+
+  return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
+}
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = labels[0] || "Other";
@@ -640,4 +668,5 @@
 </script>
 </body>
 </html>
+
 
