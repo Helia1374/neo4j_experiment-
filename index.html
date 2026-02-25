@@ -338,6 +338,30 @@
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
+     function revealCategory(label) {
+    const hubId = hubIdFor(label);
+    if (!hubId) return;
+
+    cy.nodes('[kind="real"]').addClass("hidden");
+    cy.edges().addClass("hidden");
+    cy.$('node[kind="hub"]').removeClass("hidden");
+
+    const hub = cy.getElementById(hubId);
+    const center = hub.position();
+
+    const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
+    group.removeClass("hidden");
+
+    cy.edges('[kind="hubEdge"]').remove();
+
+    const newEdges = [];
+    group.forEach(n => {
+      const eid = `HE_${hubId}_${n.id()}`;
+      newEdges.push({ group:"edges", data:{ id:eid, source:hubId, target:n.id(), label:"", kind:"hubEdge" } });
+    });
+    if (newEdges.length) cy.add(newEdges);
+    cy.edges('[kind="hubEdge"]').removeClass("hidden");
+
     const nodes = group.toArray();
     const radius = 260;
     const startAngle = -Math.PI / 2;
@@ -351,6 +375,8 @@
     document.getElementById("details").innerHTML =
       `<div class="muted"><b>${label}</b> opened. Single click nodes for details. Double click a node to expand neighbors.</div>`;
   }
+
+  // Expand only around clicked node (not global)}
 
   // Expand only around clicked node (not global)
   function expandRealNeighbors(node) {
@@ -738,3 +764,4 @@
 </script>
 </body>
 </html>
+
