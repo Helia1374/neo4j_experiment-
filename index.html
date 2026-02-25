@@ -9,21 +9,14 @@
     html, body { width:100%; height:100%; margin:0; font-family: Arial, sans-serif; background:#070A12; }
     #app { display:flex; width:100%; height:100%; }
 
-    #cy{
-      flex: 1;
-      height: 100%;
-      position: relative;
+    #cy {
+      flex: 1; height: 100%; position: relative;
       background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
       overflow: hidden;
     }
 
-    /* background glow overlay (safe; doesn't affect canvases) */
     #cy::before{
-      content:"";
-      position:absolute;
-      inset:0;
-      pointer-events:none;
-      z-index:0;
+      content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
       background:
         radial-gradient(circle at 15% 25%, rgba(0,229,255,.10) 0%, transparent 52%),
         radial-gradient(circle at 85% 30%, rgba(255,43,214,.09) 0%, transparent 52%),
@@ -35,8 +28,7 @@
     }
 
     /* ✅ IMPORTANT FIX:
-       Cytoscape creates multiple canvas layers (edges, nodes, etc).
-       They MUST be absolute and aligned to the same origin. */
+       Cytoscape uses multiple canvas layers. They must be absolute and aligned. */
     #cy canvas{
       position: absolute !important;
       inset: 0 !important;
@@ -307,6 +299,7 @@
     return null;
   }
 
+  // ✅ HARD RESET home
   function homeView(force=true) {
     if (force) {
       cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -333,91 +326,87 @@
     document.getElementById("details").innerHTML =
       `<div class="muted">Home loaded: only ${HUBS.length} hubs (clean start). Double click a hub to reveal that category.</div>`;
   }
-  // ✅ ADD THIS NEW FUNCTION HERE
-function focusOnNode(node) {
 
-  // hide everything
-  cy.elements().addClass("hidden");
+  // ✅ UPDATED: revealCategory hides other hubs (only selected hub stays)
+  function revealCategory(label) {
+    const hubId = hubIdFor(label);
+    if (!hubId) return;
 
-  // show selected node
-  node.removeClass("hidden");
+    // FULL RESET so previous opened hub disappears
+    cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
+    cy.edges().addClass("hidden");
+    cy.edges('[kind="hubEdge"]').remove();
 
-  // show connected nodes + edges
-  const neighborhood = node.closedNeighborhood();
-  neighborhood.removeClass("hidden");
+    // ✅ Hide ALL hubs, then show ONLY the selected hub
+    cy.$('node[kind="hub"]').addClass("hidden");
+    const hub = cy.getElementById(hubId);
+    hub.removeClass("hidden");
 
-  // optional: keep hubs hidden in focus mode
-  cy.nodes('[kind="hub"]').addClass("hidden");
-}
+    const center = hub.position();
 
+    // show this category nodes
+    const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
+    group.removeClass("hidden");
 
-// Double click detection
-let lastTapTime = 0;
-let lastTapId = null;
-
- function revealCategory(label) {
-  const hubId = hubIdFor(label);
-  if (!hubId) return;
-
-  // FULL RESET so previous opened hub disappears
-  cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
-  cy.edges().addClass("hidden");
-  cy.edges('[kind="hubEdge"]').remove();
-
-  // ✅ Hide ALL hubs first, then show ONLY the selected hub
-  cy.$('node[kind="hub"]').addClass("hidden");
-  const hub = cy.getElementById(hubId);
-  hub.removeClass("hidden");
-
-  const center = hub.position();
-
-  // show this category nodes
-  const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
-  group.removeClass("hidden");
-
-  // add hub edges for this category
-  const newEdges = [];
-  group.forEach(n => {
-    newEdges.push({
-      group: "edges",
-      data: { id: `HE_${hubId}_${n.id()}`, source: hubId, target: n.id(), label: "", kind: "hubEdge" }
+    // add hub edges for this category
+    const newEdges = [];
+    group.forEach(n => {
+      newEdges.push({
+        group: "edges",
+        data: { id: `HE_${hubId}_${n.id()}`, source: hubId, target: n.id(), label: "", kind: "hubEdge" }
+      });
     });
-  });
-  if (newEdges.length) cy.add(newEdges);
-  cy.edges('[kind="hubEdge"]').removeClass("hidden");
+    if (newEdges.length) cy.add(newEdges);
+    cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-  // multi-ring placement
-  const nodes = group.toArray();
-  const startAngle = -Math.PI / 2;
+    // multi-ring placement
+    const nodes = group.toArray();
+    const startAngle = -Math.PI / 2;
 
-  const perRing = 18;
-  const baseR   = 260;
-  const ringGap = 95;
+    const perRing = 18;
+    const baseR   = 260;
+    const ringGap = 95;
 
-  nodes.forEach((n, i) => {
-    const ring = Math.floor(i / perRing);
-    const idx  = i % perRing;
+    nodes.forEach((n, i) => {
+      const ring = Math.floor(i / perRing);
+      const idx  = i % perRing;
 
-    const ringCount = Math.min(perRing, nodes.length - ring * perRing);
-    const radius = baseR + ring * ringGap;
+      const ringCount = Math.min(perRing, nodes.length - ring * perRing);
+      const radius = baseR + ring * ringGap;
 
-    const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
+      const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
 
-    n.position({
-      x: center.x + radius * Math.cos(a),
-      y: center.y + radius * Math.sin(a)
+      n.position({
+        x: center.x + radius * Math.cos(a),
+        y: center.y + radius * Math.sin(a)
+      });
     });
-  });
 
-  cy.animate({ center: { eles: hub } }, { duration: 180 });
+    cy.animate({ center: { eles: hub } }, { duration: 180 });
 
-  const visible = cy.elements().filter(e => !e.hasClass("hidden"));
-  cy.fit(visible, 60);
+    const visible = cy.elements().filter(e => !e.hasClass("hidden"));
+    cy.fit(visible, 60);
 
-  document.getElementById("details").innerHTML =
-    `<div class="muted"><b>${label}</b> opened. Only this hub is shown. Click Home to return.</div>`;
-}
+    document.getElementById("details").innerHTML =
+      `<div class="muted"><b>${label}</b> opened. Only this hub is shown. Single click nodes for details. Double click a node to expand neighbors.</div>`;
+  }
 
+  // ✅ NEW: focus mode for a REAL node (shows only node + its neighborhood)
+  function focusOnNode(node) {
+    // hide everything
+    cy.elements().addClass("hidden");
+
+    // show selected node
+    node.removeClass("hidden");
+
+    // show its neighborhood: node + connected edges + connected nodes
+    node.closedNeighborhood().removeClass("hidden");
+
+    // keep hubs hidden while focusing (optional)
+    cy.nodes('[kind="hub"]').addClass("hidden");
+  }
+
+  // Expand only around clicked node (not global)
   function expandRealNeighbors(node) {
     node.removeClass("hidden");
 
@@ -453,9 +442,15 @@ let lastTapId = null;
     lastTapId = id;
 
     if (!isDouble) { showDetails(ele); return; }
+
     const d = ele.data();
-    if (d.kind === "hub") revealCategory(d.label);
-    else expandRealNeighbors(ele);
+    if (d.kind === "hub") {
+      revealCategory(d.label);
+    } else {
+      // ✅ NEW: focus on the node first (keeps all its in/out relationships visible)
+      focusOnNode(ele);
+      expandRealNeighbors(ele);
+    }
   }
 
   const EDGE_LABEL_ZOOM = 1.05;
@@ -713,7 +708,7 @@ let lastTapId = null;
       ],
       wheelSensitivity: 0.15,
 
-      /* ✅ optional: avoid "laggy" edges during interaction */
+      /* optional: avoid laggy edges during interaction */
       hideEdgesOnViewport: false,
       textureOnViewport: false,
       motionBlur: false
@@ -729,15 +724,9 @@ let lastTapId = null;
 
     enableHoverFocus();
 
-    // Tap interactions
     cy.on("tap","node",(evt)=>handleTap(evt.target));
-
-    // Edge label zoom toggle
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
-
-    // (Optional) if your device/browser still doesn't repaint edges during drag:
-    // cy.on("drag", "node", () => cy.style().update());
 
     document.getElementById("btnHome").onclick = () => homeView(true);
     document.getElementById("btnCollapse").onclick = () => homeView(true);
@@ -787,5 +776,3 @@ let lastTapId = null;
 </script>
 </body>
 </html>
-
-
