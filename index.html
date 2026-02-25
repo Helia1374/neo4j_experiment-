@@ -8,13 +8,22 @@
   <style>
     html, body { width:100%; height:100%; margin:0; font-family: Arial, sans-serif; background:#070A12; }
     #app { display:flex; width:100%; height:100%; }
-    #cy {
-      flex: 1; height: 100%; position: relative;
+
+    #cy{
+      flex: 1;
+      height: 100%;
+      position: relative;
       background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
       overflow: hidden;
     }
+
+    /* background glow overlay (safe; doesn't affect canvases) */
     #cy::before{
-      content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
       background:
         radial-gradient(circle at 15% 25%, rgba(0,229,255,.10) 0%, transparent 52%),
         radial-gradient(circle at 85% 30%, rgba(255,43,214,.09) 0%, transparent 52%),
@@ -24,8 +33,20 @@
       filter: blur(2px);
       animation: drift 12s ease-in-out infinite alternate;
     }
-    #cy > canvas { position:relative; z-index:1; }
-    @keyframes drift { from { transform: translate3d(-5px,-3px,0) scale(1.01); } to { transform: translate3d(6px,5px,0) scale(1.03); } }
+
+    /* ✅ IMPORTANT FIX:
+       Cytoscape creates multiple canvas layers (edges, nodes, etc).
+       They MUST be absolute and aligned to the same origin. */
+    #cy canvas{
+      position: absolute !important;
+      inset: 0 !important;
+      z-index: 1;
+    }
+
+    @keyframes drift {
+      from { transform: translate3d(-5px,-3px,0) scale(1.01); }
+      to   { transform: translate3d(6px,5px,0) scale(1.03); }
+    }
 
     #side {
       width: 380px; border-left: 1px solid rgba(255,255,255,0.08);
@@ -33,6 +54,7 @@
       background: linear-gradient(180deg, rgba(15,18,34,0.98), rgba(8,10,18,0.98));
       color: #E9ECFF;
     }
+
     #toolbar {
       position: fixed; top: 12px; left: 12px; z-index: 999;
       background: rgba(10,12,22,0.85);
@@ -46,6 +68,7 @@
       max-width: 1180px;
       flex-wrap: wrap;
     }
+
     .btn {
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.06);
@@ -56,6 +79,7 @@
       user-select: none;
     }
     .btn:hover { background: rgba(255,255,255,0.12); }
+
     #search {
       width: 280px; padding: 8px 10px; border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.18);
@@ -63,6 +87,7 @@
       color: #E9ECFF; outline: none;
     }
     #search::placeholder { color: rgba(233,236,255,0.6); }
+
     h3 { margin: 8px 0 10px; }
     .muted { color: rgba(233,236,255,0.65); font-size: 12px; line-height: 1.4; }
     .kv { margin: 10px 0; }
@@ -282,7 +307,6 @@
     return null;
   }
 
-  // ✅ HARD RESET home
   function homeView(force=true) {
     if (force) {
       cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -310,27 +334,22 @@
       `<div class="muted">Home loaded: only ${HUBS.length} hubs (clean start). Double click a hub to reveal that category.</div>`;
   }
 
-  // ✅ FIXED revealCategory: full reset + multi-ring + old expansions disappear
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
-    // FULL RESET so previous opened hub disappears
     cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
     cy.edges().addClass("hidden");
     cy.edges('[kind="hubEdge"]').remove();
 
-    // show hubs
     cy.$('node[kind="hub"]').removeClass("hidden");
 
     const hub = cy.getElementById(hubId);
     const center = hub.position();
 
-    // show this category nodes
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
-    // add hub edges for this category
     const newEdges = [];
     group.forEach(n => {
       newEdges.push({
@@ -341,7 +360,6 @@
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-    // multi-ring placement
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
 
@@ -373,7 +391,6 @@
       `<div class="muted"><b>${label}</b> opened. Single click nodes for details. Double click a node to expand neighbors.</div>`;
   }
 
-  // Expand only around clicked node (not global)
   function expandRealNeighbors(node) {
     node.removeClass("hidden");
 
@@ -585,17 +602,13 @@
       data: { id:h.id, label:h.label, title:h.title, color:HUB_COLORS[h.label] || "#B8BFFF", size:125, kind:"hub" }
     }));
 
-cy = cytoscape({
-  container: document.getElementById("cy"),
-  elements: { nodes: [...hubNodes, ...realNodes], edges: goodEdges },
-  style: [ /* ...your style... */ ],
-  wheelSensitivity: 0.15,
-
-  // ✅ add these:
-  hideEdgesOnViewport: false,
-  textureOnViewport: false,
-  motionBlur: false
-});,
+    cy = cytoscape({
+      container: document.getElementById("cy"),
+      elements: { nodes: [...hubNodes, ...realNodes], edges: goodEdges },
+      style: [
+        { selector: ".hidden", style: { "display": "none" } },
+        { selector: ".dim", style: { "opacity": 0.10 } },
+        { selector: ".hi", style: { "opacity": 1, "shadow-blur": 30, "shadow-opacity": 0.7, "shadow-color": "#ffffff" } },
 
         {
           selector: 'node[kind="real"]',
@@ -671,20 +684,33 @@ cy = cytoscape({
           }
         }
       ],
-      wheelSensitivity: 0.15
+      wheelSensitivity: 0.15,
+
+      /* ✅ optional: avoid "laggy" edges during interaction */
+      hideEdgesOnViewport: false,
+      textureOnViewport: false,
+      motionBlur: false
     });
 
-    // ✅ Fix dragging / arrows not following
+    // Allow dragging
     cy.autoungrabify(false);
     cy.autolock(false);
     cy.panningEnabled(true);
     cy.userPanningEnabled(true);
 
     cy.minZoom(0.35); cy.maxZoom(2.5);
+
     enableHoverFocus();
+
+    // Tap interactions
     cy.on("tap","node",(evt)=>handleTap(evt.target));
+
+    // Edge label zoom toggle
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
+
+    // (Optional) if your device/browser still doesn't repaint edges during drag:
+    // cy.on("drag", "node", () => cy.style().update());
 
     document.getElementById("btnHome").onclick = () => homeView(true);
     document.getElementById("btnCollapse").onclick = () => homeView(true);
@@ -734,4 +760,3 @@ cy = cytoscape({
 </script>
 </body>
 </html>
-
