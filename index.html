@@ -333,6 +333,27 @@
     document.getElementById("details").innerHTML =
       `<div class="muted">Home loaded: only ${HUBS.length} hubs (clean start). Double click a hub to reveal that category.</div>`;
   }
+  // ✅ ADD THIS NEW FUNCTION HERE
+function focusOnNode(node) {
+
+  // hide everything
+  cy.elements().addClass("hidden");
+
+  // show selected node
+  node.removeClass("hidden");
+
+  // show connected nodes + edges
+  const neighborhood = node.closedNeighborhood();
+  neighborhood.removeClass("hidden");
+
+  // optional: keep hubs hidden in focus mode
+  cy.nodes('[kind="hub"]').addClass("hidden");
+}
+
+
+// Double click detection
+let lastTapTime = 0;
+let lastTapId = null;
 
  function revealCategory(label) {
   const hubId = hubIdFor(label);
@@ -766,4 +787,5 @@
 </script>
 </body>
 </html>
+
 
