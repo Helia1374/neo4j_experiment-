@@ -43,7 +43,7 @@
       display: flex; gap: 8px; align-items: center;
       backdrop-filter: blur(8px);
       color: #E9ECFF;
-      max-width: 1100px;
+      max-width: 1180px;
       flex-wrap: wrap;
     }
     .btn {
@@ -79,6 +79,7 @@
   <div id="toolbar">
     <div style="font-weight:700;">⚡ Graph Explorer</div>
     <div class="btn" id="btnHome">Home</div>
+    <div class="btn" id="btnCollapse">Collapse</div>
     <div class="btn" id="btnShowAll">Show all</div>
     <div class="btn" id="btnFit">Fit</div>
     <input id="search" placeholder="Search (any property), press Enter" />
@@ -101,6 +102,7 @@
   </div>
 
 <script>
+  // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
     ValueChainStage: "#3DB4FF",
@@ -134,6 +136,7 @@
 
   let cy;
 
+  // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -144,7 +147,6 @@
   function neoId(x) {
     if (x == null) return null;
     if (typeof x === "string" || typeof x === "number") return String(x);
-
     if (x.elementId != null) return String(x.elementId);
 
     const ident = x.identity ?? x.id;
@@ -182,6 +184,7 @@
     return String(v);
   }
 
+  // ----------------------------- Labels -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = labels[0] || "Other";
@@ -216,6 +219,7 @@
   }
   function colorForLabel(label) { return COLORS[label] || COLORS.Other; }
 
+  // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
     const head = `
@@ -251,6 +255,7 @@
       (propRows ? `<div class="muted" style="margin-top:10px; font-weight:700;">Properties</div>${propRows}` : `<div class="muted">No properties</div>`);
   }
 
+  // ----------------------------- Hover focus -----------------------------
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
@@ -265,6 +270,7 @@
     });
   }
 
+  // ----------------------------- Hubs helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -276,9 +282,10 @@
     return null;
   }
 
+  // ✅ HARD RESET home
   function homeView(force=true) {
     if (force) {
-      cy.nodes('[kind="real"]').addClass("hidden");
+      cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
       cy.edges().addClass("hidden");
       cy.edges('[kind="hubEdge"]').remove();
     }
@@ -303,32 +310,38 @@
       `<div class="muted">Home loaded: only ${HUBS.length} hubs (clean start). Double click a hub to reveal that category.</div>`;
   }
 
-  // ✅ CORRECT revealCategory (single function, multi-ring layout)
+  // ✅ FIXED revealCategory: full reset + multi-ring + old expansions disappear
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
-    cy.nodes('[kind="real"]').addClass("hidden");
+    // FULL RESET so previous opened hub disappears
+    cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
     cy.edges().addClass("hidden");
+    cy.edges('[kind="hubEdge"]').remove();
+
+    // show hubs
     cy.$('node[kind="hub"]').removeClass("hidden");
 
     const hub = cy.getElementById(hubId);
     const center = hub.position();
 
+    // show this category nodes
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
-    cy.edges('[kind="hubEdge"]').remove();
-
+    // add hub edges for this category
     const newEdges = [];
     group.forEach(n => {
-      const eid = `HE_${hubId}_${n.id()}`;
-      newEdges.push({ group:"edges", data:{ id:eid, source:hubId, target:n.id(), label:"", kind:"hubEdge" } });
+      newEdges.push({
+        group: "edges",
+        data: { id: `HE_${hubId}_${n.id()}`, source: hubId, target: n.id(), label: "", kind: "hubEdge" }
+      });
     });
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-    // Multi-ring around hub (no overlap)
+    // multi-ring placement
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
 
@@ -360,6 +373,7 @@
       `<div class="muted"><b>${label}</b> opened. Single click nodes for details. Double click a node to expand neighbors.</div>`;
   }
 
+  // Expand only around clicked node (not global)
   function expandRealNeighbors(node) {
     node.removeClass("hidden");
 
@@ -384,6 +398,7 @@
     cy.animate({ center: { eles: node } }, { duration: 160 });
   }
 
+  // Double click detection
   let lastTapTime = 0;
   let lastTapId = null;
   function handleTap(ele) {
@@ -497,6 +512,7 @@
     return null;
   }
 
+  // ----------------------------- Main -----------------------------
   async function main() {
     const res = await fetch("./graph.json", { cache: "no-store" });
     if (!res.ok) {
@@ -654,6 +670,12 @@
       wheelSensitivity: 0.15
     });
 
+    // ✅ Fix dragging / arrows not following
+    cy.autoungrabify(false);
+    cy.autolock(false);
+    cy.panningEnabled(true);
+    cy.userPanningEnabled(true);
+
     cy.minZoom(0.35); cy.maxZoom(2.5);
     enableHoverFocus();
     cy.on("tap","node",(evt)=>handleTap(evt.target));
@@ -661,6 +683,7 @@
     updateEdgeLabelVisibility();
 
     document.getElementById("btnHome").onclick = () => homeView(true);
+    document.getElementById("btnCollapse").onclick = () => homeView(true);
     document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
 
     document.getElementById("btnShowAll").onclick = () => {
