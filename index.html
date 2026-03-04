@@ -8,7 +8,6 @@
   <style>
     html, body { width:100%; height:100%; margin:0; font-family: Arial, sans-serif; background:#070A12; }
     #app { display:flex; width:100%; height:100%; }
-
     #cy {
       flex: 1; height: 100%; position: relative;
       background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
@@ -26,7 +25,7 @@
       animation: drift 12s ease-in-out infinite alternate;
     }
 
-    /* IMPORTANT: keep Cytoscape canvas layers aligned */
+    /* keep Cytoscape canvas layers aligned */
     #cy canvas{
       position:absolute !important;
       inset:0 !important;
@@ -71,7 +70,6 @@
       color: #E9ECFF; outline: none;
     }
     #search::placeholder { color: rgba(233,236,255,0.6); }
-
     h3 { margin: 8px 0 10px; }
     .muted { color: rgba(233,236,255,0.65); font-size: 12px; line-height: 1.4; }
     .kv { margin: 10px 0; }
@@ -133,7 +131,7 @@
     Innovation: "#FF9A3C"
   };
 
-  // ✅ Removed ValueChainStage hub to avoid confusion
+  // ✅ ValueChainStage hub removed
   const HUBS = [
     { id: "HUB_MAT", label: "Material", title: "Materials" },
     { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
@@ -143,6 +141,12 @@
   ];
 
   let cy;
+
+  // ✅ expansion controls
+  const MAX_NEW_NEIGHBORS_PER_EXPAND = 18;  // change to 30/50 if you want
+  const MIN_DIST = 105;                    // collision distance
+  const BASE_RING = 190;                   // first ring radius
+  const RING_STEP = 65;                    // ring spacing
 
   // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
@@ -296,7 +300,6 @@
       cy.edges('[kind="hubEdge"]').remove();
     }
 
-    // show all hubs
     cy.$('node[kind="hub"]').removeClass("hidden");
 
     const w = cy.width(), h = cy.height();
@@ -317,28 +320,24 @@
       `<div class="muted">Home loaded: hubs only. Double click a hub to reveal that category.</div>`;
   }
 
-  // ✅ revealCategory: show only selected hub + its category nodes (other hubs disappear)
+  // show only selected hub + its category nodes
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
-    // reset everything real
     cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
     cy.edges().addClass("hidden");
     cy.edges('[kind="hubEdge"]').remove();
 
-    // hide all hubs, show only selected
     cy.$('node[kind="hub"]').addClass("hidden");
     const hub = cy.getElementById(hubId);
     hub.removeClass("hidden");
 
     const center = hub.position();
 
-    // show this category nodes
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
-    // add hub edges for this category (visual-only)
     const newEdges = [];
     group.forEach(n => {
       newEdges.push({
@@ -349,7 +348,6 @@
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-    // simple ring placement
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
     const perRing = 18;
@@ -359,119 +357,116 @@
     nodes.forEach((n, i) => {
       const ring = Math.floor(i / perRing);
       const idx  = i % perRing;
-
       const ringCount = Math.min(perRing, nodes.length - ring * perRing);
       const radius = baseR + ring * ringGap;
       const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
 
-      n.position({
-        x: center.x + radius * Math.cos(a),
-        y: center.y + radius * Math.sin(a)
-      });
+      n.position({ x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a) });
       n.data("_placed", true);
     });
 
-    cy.animate({ center: { eles: hub } }, { duration: 180 });
-
-    const visible = cy.elements().filter(e => !e.hasClass("hidden"));
-    cy.fit(visible, 60);
+    cy.fit(cy.elements().filter(e => !e.hasClass("hidden")), 60);
 
     document.getElementById("details").innerHTML =
       `<div class="muted"><b>${label}</b> opened. Double click any node to expand its real relationships.</div>`;
   }
 
-  // ✅ Layout to keep expanded nodes organized (reduces overlaps)
-  let layoutTimer = null;
-  function tidyVisibleRealGraph() {
-    // debounce (avoid running layout too often)
-    if (layoutTimer) clearTimeout(layoutTimer);
-    layoutTimer = setTimeout(() => {
-      const visibleRealNodes = cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden"));
-      const visibleRealEdges = cy.edges('[kind="realEdge"]').filter(e => !e.hasClass("hidden"));
-      const sub = visibleRealNodes.union(visibleRealEdges);
+  // ----------------------------- Smart placement (NO global layout) -----------------------------
+  function dist2(a, b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
 
-      if (sub.length < 2) return;
-
-      cy.layout({
-        name: "cose",
-        animate: true,
-        animationDuration: 350,
-        fit: false,
-        randomize: false,
-        padding: 40,
-
-        // stronger separation
-        nodeRepulsion: 9000,
-        idealEdgeLength: 120,
-        edgeElasticity: 0.25,
-        gravity: 0.4,
-        numIter: 250
-      }).run();
-    }, 50);
+  function isFree(pos, excludeId=null){
+    const min2 = MIN_DIST * MIN_DIST;
+    const visible = cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden") && n.id() !== excludeId);
+    for (let i=0; i<visible.length; i++){
+      const p = visible[i].position();
+      if (dist2(p, pos) < min2) return false;
+    }
+    return true;
   }
 
-  // Expand neighbors and KEEP previous expansions visible
+  function findFreeSpiral(center, angle0, excludeId=null){
+    // spiral out across rings
+    for (let ring=0; ring<10; ring++){
+      const r = BASE_RING + ring * RING_STEP;
+      const steps = 14 + ring * 4;
+      for (let s=0; s<steps; s++){
+        const a = angle0 + (2*Math.PI*s)/steps;
+        const pos = { x: center.x + r*Math.cos(a), y: center.y + r*Math.sin(a) };
+        if (isFree(pos, excludeId)) return pos;
+      }
+    }
+    // fallback
+    return { x: center.x + (BASE_RING+9*RING_STEP), y: center.y };
+  }
+
+  // Expand neighbors and keep previous expansions visible + organized
   function expandRealNeighbors(node) {
-    // once user explores real graph: hide hub + hubEdges (as you wanted)
+    // hide hub and hubEdges once you start exploring (your requested behavior)
     cy.nodes('[kind="hub"]').addClass("hidden");
     cy.edges('[kind="hubEdge"]').addClass("hidden");
 
     node.removeClass("hidden");
 
     const realEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
-    const neighbors = realEdges.connectedNodes();
+    const neighbors = realEdges.connectedNodes().filter(n => n.id() !== node.id());
 
+    // reveal edges + neighbor nodes (but cap how many NEW nodes appear per click)
     realEdges.removeClass("hidden");
-    neighbors.removeClass("hidden");
 
-    // place any newly revealed nodes around the clicked node (if not placed)
-    const c = node.position();
-    const neigh = neighbors.toArray().filter(n => n.id() !== node.id());
+    const center = node.position();
+    let newlyShown = [];
 
-    const baseR = 180;
-    const stepR = 60;
+    // prioritize: show hidden neighbors first, but don’t explode
+    const hiddenFirst = neighbors.toArray().sort((a,b) => {
+      const ah = a.hasClass("hidden") ? 0 : 1;
+      const bh = b.hasClass("hidden") ? 0 : 1;
+      return ah - bh;
+    });
 
-    neigh.forEach((n, i) => {
+    for (const n of hiddenFirst) {
+      const wasHidden = n.hasClass("hidden");
+      n.removeClass("hidden");
+
+      if (wasHidden) newlyShown.push(n);
+
+      // cap only for NEW nodes (already visible ones can remain)
+      if (newlyShown.length >= MAX_NEW_NEIGHBORS_PER_EXPAND) break;
+    }
+
+    // if we capped, keep edges only to visible neighbors (hide edges to still-hidden nodes)
+    const visibleIds = new Set(cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden")).map(n => n.id()));
+    realEdges.forEach(e => {
+      if (!visibleIds.has(e.source().id()) || !visibleIds.has(e.target().id())) e.addClass("hidden");
+      else e.removeClass("hidden");
+    });
+
+    // place only the NEW nodes around the clicked node with collision avoidance
+    newlyShown.forEach((n, i) => {
       if (!n.data("_placed")) {
-        // try a few radii until it's not too close to existing nodes
-        let r = baseR;
-        let placed = false;
-
-        for (let attempt = 0; attempt < 4 && !placed; attempt++) {
-          const a = (2*Math.PI*i)/Math.max(neigh.length, 1);
-          const pos = { x: c.x + r*Math.cos(a), y: c.y + r*Math.sin(a) };
-
-          // check distance to already visible nodes to reduce overlaps
-          const tooClose = cy.nodes('[kind="real"]')
-            .filter(x => !x.hasClass("hidden") && x.id() !== n.id())
-            .some(x => {
-              const p = x.position();
-              const dx = p.x - pos.x, dy = p.y - pos.y;
-              return (dx*dx + dy*dy) < (90*90); // min distance
-            });
-
-          if (!tooClose) {
-            n.position(pos);
-            placed = true;
-          } else {
-            r += stepR;
-          }
-        }
-
-        // if still not placed nicely, place anyway (layout will clean it up)
-        if (!placed) {
-          const a = (2*Math.PI*i)/Math.max(neigh.length, 1);
-          n.position({ x: c.x + (baseR + 3*stepR)*Math.cos(a), y: c.y + (baseR + 3*stepR)*Math.sin(a) });
-        }
-
+        const angle0 = -Math.PI/2 + (2*Math.PI*i)/Math.max(newlyShown.length, 1);
+        const pos = findFreeSpiral(center, angle0, n.id());
+        n.position(pos);
         n.data("_placed", true);
       }
     });
 
-    // tidy after expanding to keep things from stacking
-    tidyVisibleRealGraph();
+    // small gentle nudge: spread newly shown nodes a bit further if still close
+    // (keeps sequences readable without moving everything)
+    newlyShown.forEach(n => {
+      const p = n.position();
+      if (!isFree(p, n.id())) {
+        const angle = Math.atan2(p.y - center.y, p.x - center.x);
+        const pos = findFreeSpiral(center, angle, n.id());
+        n.position(pos);
+      }
+    });
 
     cy.animate({ center: { eles: node } }, { duration: 160 });
+
+    const msg = newlyShown.length >= MAX_NEW_NEIGHBORS_PER_EXPAND
+      ? `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Showing first <b>${MAX_NEW_NEIGHBORS_PER_EXPAND}</b> new neighbors to avoid clutter. Double click again to reveal more.</div>`
+      : `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Previous nodes stay visible (sequence kept).</div>`;
+    document.getElementById("details").innerHTML = msg;
   }
 
   // Double click detection
@@ -487,13 +482,8 @@
     if (!isDouble) { showDetails(ele); return; }
 
     const d = ele.data();
-    if (d.kind === "hub") {
-      revealCategory(d.label);
-    } else {
-      // ✅ IMPORTANT: do NOT hide everything anymore
-      // keep previous sequence visible, just expand more
-      expandRealNeighbors(ele);
-    }
+    if (d.kind === "hub") revealCategory(d.label);
+    else expandRealNeighbors(ele);
   }
 
   const EDGE_LABEL_ZOOM = 1.05;
@@ -764,7 +754,6 @@
 
     enableHoverFocus();
     cy.on("tap","node",(evt)=>handleTap(evt.target));
-
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
 
@@ -778,7 +767,6 @@
       document.getElementById("details").innerHTML =
         `<div class="muted">All nodes shown. Hover a node to focus and see relationship names.</div>`;
       updateEdgeLabelVisibility();
-      tidyVisibleRealGraph();
     };
 
     document.getElementById("search").addEventListener("keydown",(e)=>{
@@ -797,18 +785,10 @@
         hit.removeClass("hidden");
         showDetails(hit);
         cy.animate({ center:{ eles: hit } }, { duration: 200 });
-        tidyVisibleRealGraph();
       }
     });
 
     homeView(true);
-
-    if (goodEdges.length === 0) {
-      document.getElementById("details").innerHTML =
-        `<b>No relationships drawn</b><br><br>
-         This means your <code>graph.json</code> relationships reference node ids that don't exist in the node list (Neo4j id mismatch).<br><br>
-         Check the Debug box below (it will say edges reference missing node ids).`;
-    }
   }
 
   main().catch(err => {
