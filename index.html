@@ -14,7 +14,6 @@
       background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
       overflow: hidden;
     }
-
     #cy::before{
       content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
       background:
@@ -27,18 +26,14 @@
       animation: drift 12s ease-in-out infinite alternate;
     }
 
-    /* ✅ IMPORTANT FIX:
-       Cytoscape uses multiple canvas layers. They must be absolute and aligned. */
+    /* IMPORTANT: keep Cytoscape canvas layers aligned */
     #cy canvas{
-      position: absolute !important;
-      inset: 0 !important;
-      z-index: 1;
+      position:absolute !important;
+      inset:0 !important;
+      z-index:1;
     }
 
-    @keyframes drift {
-      from { transform: translate3d(-5px,-3px,0) scale(1.01); }
-      to   { transform: translate3d(6px,5px,0) scale(1.03); }
-    }
+    @keyframes drift { from { transform: translate3d(-5px,-3px,0) scale(1.01); } to { transform: translate3d(6px,5px,0) scale(1.03); } }
 
     #side {
       width: 380px; border-left: 1px solid rgba(255,255,255,0.08);
@@ -46,7 +41,6 @@
       background: linear-gradient(180deg, rgba(15,18,34,0.98), rgba(8,10,18,0.98));
       color: #E9ECFF;
     }
-
     #toolbar {
       position: fixed; top: 12px; left: 12px; z-index: 999;
       background: rgba(10,12,22,0.85);
@@ -60,7 +54,6 @@
       max-width: 1180px;
       flex-wrap: wrap;
     }
-
     .btn {
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.06);
@@ -71,7 +64,6 @@
       user-select: none;
     }
     .btn:hover { background: rgba(255,255,255,0.12); }
-
     #search {
       width: 280px; padding: 8px 10px; border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.18);
@@ -108,7 +100,7 @@
     <div id="cy"></div>
     <div id="side">
       <h3>Details</h3>
-      <div id="details" class="muted">Home shows 6 hubs. Double click one hub to open that category.</div>
+      <div id="details" class="muted">Home shows hubs. Double click one hub to open that category.</div>
       <hr />
       <div class="muted">
         Tip: Hover a node to reduce clutter. Relationship names show on focused edges (and when zoomed in).
@@ -135,16 +127,15 @@
 
   const HUB_COLORS = {
     Material: "#4CC9FF",
-    ValueChainStage: "#3DB4FF",
     Partner: "#FF4DE1",
     Deliverable: "#B4FF4A",
     Demonstration: "#FFE06A",
     Innovation: "#FF9A3C"
   };
 
+  // ✅ Removed ValueChainStage hub to avoid confusion
   const HUBS = [
     { id: "HUB_MAT", label: "Material", title: "Materials" },
-    { id: "HUB_STAGE", label: "ValueChainStage", title: "Value Chain Stages" },
     { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
     { id: "HUB_DELIV", label: "Deliverable", title: "Deliverables" },
     { id: "HUB_DEMO", label: "Demonstration", title: "Demonstrations" },
@@ -291,7 +282,6 @@
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
-    if (L === "valuechainstage") return "HUB_STAGE";
     if (L === "partner") return "HUB_PARTNER";
     if (L === "deliverable") return "HUB_DELIV";
     if (L === "demonstration") return "HUB_DEMO";
@@ -299,7 +289,6 @@
     return null;
   }
 
-  // ✅ HARD RESET home
   function homeView(force=true) {
     if (force) {
       cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -307,6 +296,7 @@
       cy.edges('[kind="hubEdge"]').remove();
     }
 
+    // show all hubs
     cy.$('node[kind="hub"]').removeClass("hidden");
 
     const w = cy.width(), h = cy.height();
@@ -324,20 +314,20 @@
     cy.center(cy.$('node[kind="hub"]'));
 
     document.getElementById("details").innerHTML =
-      `<div class="muted">Home loaded: only ${HUBS.length} hubs (clean start). Double click a hub to reveal that category.</div>`;
+      `<div class="muted">Home loaded: hubs only. Double click a hub to reveal that category.</div>`;
   }
 
-  // ✅ UPDATED: revealCategory hides other hubs (only selected hub stays)
+  // ✅ revealCategory: show only selected hub + its category nodes (other hubs disappear)
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
-    // FULL RESET so previous opened hub disappears
+    // reset everything real
     cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
     cy.edges().addClass("hidden");
     cy.edges('[kind="hubEdge"]').remove();
 
-    // ✅ Hide ALL hubs, then show ONLY the selected hub
+    // hide all hubs, show only selected
     cy.$('node[kind="hub"]').addClass("hidden");
     const hub = cy.getElementById(hubId);
     hub.removeClass("hidden");
@@ -348,7 +338,7 @@
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
-    // add hub edges for this category
+    // add hub edges for this category (visual-only)
     const newEdges = [];
     group.forEach(n => {
       newEdges.push({
@@ -359,10 +349,9 @@
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
-    // multi-ring placement
+    // simple ring placement
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
-
     const perRing = 18;
     const baseR   = 260;
     const ringGap = 95;
@@ -373,13 +362,13 @@
 
       const ringCount = Math.min(perRing, nodes.length - ring * perRing);
       const radius = baseR + ring * ringGap;
-
       const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
 
       n.position({
         x: center.x + radius * Math.cos(a),
         y: center.y + radius * Math.sin(a)
       });
+      n.data("_placed", true);
     });
 
     cy.animate({ center: { eles: hub } }, { duration: 180 });
@@ -388,45 +377,99 @@
     cy.fit(visible, 60);
 
     document.getElementById("details").innerHTML =
-      `<div class="muted"><b>${label}</b> opened. Only this hub is shown. Single click nodes for details. Double click a node to expand neighbors.</div>`;
+      `<div class="muted"><b>${label}</b> opened. Double click any node to expand its real relationships.</div>`;
   }
 
-  // ✅ NEW: focus mode for a REAL node (shows only node + its neighborhood)
-  function focusOnNode(node) {
-    // hide everything
-    cy.elements().addClass("hidden");
+  // ✅ Layout to keep expanded nodes organized (reduces overlaps)
+  let layoutTimer = null;
+  function tidyVisibleRealGraph() {
+    // debounce (avoid running layout too often)
+    if (layoutTimer) clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(() => {
+      const visibleRealNodes = cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden"));
+      const visibleRealEdges = cy.edges('[kind="realEdge"]').filter(e => !e.hasClass("hidden"));
+      const sub = visibleRealNodes.union(visibleRealEdges);
 
-    // show selected node
-    node.removeClass("hidden");
+      if (sub.length < 2) return;
 
-    // show its neighborhood: node + connected edges + connected nodes
-    node.closedNeighborhood().removeClass("hidden");
+      cy.layout({
+        name: "cose",
+        animate: true,
+        animationDuration: 350,
+        fit: false,
+        randomize: false,
+        padding: 40,
 
-    // keep hubs hidden while focusing (optional)
-    cy.nodes('[kind="hub"]').addClass("hidden");
+        // stronger separation
+        nodeRepulsion: 9000,
+        idealEdgeLength: 120,
+        edgeElasticity: 0.25,
+        gravity: 0.4,
+        numIter: 250
+      }).run();
+    }, 50);
   }
 
-  // Expand only around clicked node (not global)
+  // Expand neighbors and KEEP previous expansions visible
   function expandRealNeighbors(node) {
+    // once user explores real graph: hide hub + hubEdges (as you wanted)
+    cy.nodes('[kind="hub"]').addClass("hidden");
+    cy.edges('[kind="hubEdge"]').addClass("hidden");
+
     node.removeClass("hidden");
 
-    const realEdges = node.connectedEdges().filter(e => e.data("kind")!=="hubEdge");
+    const realEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
     const neighbors = realEdges.connectedNodes();
 
     realEdges.removeClass("hidden");
     neighbors.removeClass("hidden");
 
+    // place any newly revealed nodes around the clicked node (if not placed)
     const c = node.position();
     const neigh = neighbors.toArray().filter(n => n.id() !== node.id());
-    const r = 170;
+
+    const baseR = 180;
+    const stepR = 60;
 
     neigh.forEach((n, i) => {
       if (!n.data("_placed")) {
-        const a = (2*Math.PI*i)/Math.max(neigh.length, 1);
-        n.position({ x: c.x + r*Math.cos(a), y: c.y + r*Math.sin(a) });
+        // try a few radii until it's not too close to existing nodes
+        let r = baseR;
+        let placed = false;
+
+        for (let attempt = 0; attempt < 4 && !placed; attempt++) {
+          const a = (2*Math.PI*i)/Math.max(neigh.length, 1);
+          const pos = { x: c.x + r*Math.cos(a), y: c.y + r*Math.sin(a) };
+
+          // check distance to already visible nodes to reduce overlaps
+          const tooClose = cy.nodes('[kind="real"]')
+            .filter(x => !x.hasClass("hidden") && x.id() !== n.id())
+            .some(x => {
+              const p = x.position();
+              const dx = p.x - pos.x, dy = p.y - pos.y;
+              return (dx*dx + dy*dy) < (90*90); // min distance
+            });
+
+          if (!tooClose) {
+            n.position(pos);
+            placed = true;
+          } else {
+            r += stepR;
+          }
+        }
+
+        // if still not placed nicely, place anyway (layout will clean it up)
+        if (!placed) {
+          const a = (2*Math.PI*i)/Math.max(neigh.length, 1);
+          n.position({ x: c.x + (baseR + 3*stepR)*Math.cos(a), y: c.y + (baseR + 3*stepR)*Math.sin(a) });
+        }
+
         n.data("_placed", true);
       }
     });
+
+    // tidy after expanding to keep things from stacking
+    tidyVisibleRealGraph();
 
     cy.animate({ center: { eles: node } }, { duration: 160 });
   }
@@ -447,8 +490,8 @@
     if (d.kind === "hub") {
       revealCategory(d.label);
     } else {
-      // ✅ NEW: focus on the node first (keeps all its in/out relationships visible)
-      focusOnNode(ele);
+      // ✅ IMPORTANT: do NOT hide everything anymore
+      // keep previous sequence visible, just expand more
       expandRealNeighbors(ele);
     }
   }
@@ -707,14 +750,11 @@
         }
       ],
       wheelSensitivity: 0.15,
-
-      /* optional: avoid laggy edges during interaction */
       hideEdgesOnViewport: false,
       textureOnViewport: false,
       motionBlur: false
     });
 
-    // Allow dragging
     cy.autoungrabify(false);
     cy.autolock(false);
     cy.panningEnabled(true);
@@ -723,8 +763,8 @@
     cy.minZoom(0.35); cy.maxZoom(2.5);
 
     enableHoverFocus();
-
     cy.on("tap","node",(evt)=>handleTap(evt.target));
+
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
 
@@ -738,6 +778,7 @@
       document.getElementById("details").innerHTML =
         `<div class="muted">All nodes shown. Hover a node to focus and see relationship names.</div>`;
       updateEdgeLabelVisibility();
+      tidyVisibleRealGraph();
     };
 
     document.getElementById("search").addEventListener("keydown",(e)=>{
@@ -756,6 +797,7 @@
         hit.removeClass("hidden");
         showDetails(hit);
         cy.animate({ center:{ eles: hit } }, { duration: 200 });
+        tidyVisibleRealGraph();
       }
     });
 
