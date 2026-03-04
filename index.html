@@ -2,11 +2,11 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Graph Explorer (Neo4j-like)</title>
+  <title>Graph Explorer</title>
 
   <!-- Cytoscape core -->
   <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
-  <!-- Physics layout (Neo4j-ish shake & settle) -->
+  <!-- Physics layout -->
   <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
 
   <style>
@@ -37,7 +37,7 @@
       animation: drift 12s ease-in-out infinite alternate;
     }
 
-    /* ✅ IMPORTANT: Cytoscape uses multiple canvas layers. Keep them aligned. */
+    /* ✅ Keep Cytoscape canvas layers aligned */
     #cy canvas{
       position:absolute !important;
       inset:0 !important;
@@ -119,6 +119,9 @@
     .swatch { width:10px; height:10px; border-radius:3px; display:inline-block; border:1px solid rgba(255,255,255,0.18); }
     .smallbtn { padding:6px 8px; font-size:12px; border-radius:10px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    .sectionTitle { font-weight:700; color:#E9ECFF; margin:6px 0; }
+    .bigTitle { font-weight:800; font-size:16px; margin:2px 0 6px; }
+    .descBox { padding:8px 10px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.10); }
   </style>
 </head>
 
@@ -147,24 +150,24 @@
       <div id="details" class="muted">Home shows hubs. Double click a hub to open that category.</div>
 
       <hr />
-      <div class="muted"><b>Controls</b></div>
+      <div class="sectionTitle">Controls</div>
       <div class="muted">
-        • <b>Move</b> OFF = Neo4j-like (no accidental dragging)<br>
-        • <b>Right click</b> node = pin/unpin (keeps layout stable)<br>
-        • <b>Double click</b> node = expand neighbors (organized + local physics settle)<br>
-        • <b>Shift+click</b> two nodes = shortest path highlight
+        • Move OFF = click/select without dragging<br>
+        • Right click node = pin/unpin<br>
+        • Double click node = expand neighbors<br>
+        • Shift+click two nodes = shortest path highlight
       </div>
 
       <hr />
-      <div class="muted"><b>Filters</b></div>
+      <div class="sectionTitle">Filters</div>
       <div id="filters"></div>
 
       <hr />
-      <div class="muted"><b>Breadcrumb (your expansion sequence)</b></div>
+      <div class="sectionTitle">Breadcrumb</div>
       <div id="crumbs" class="muted">—</div>
 
       <hr />
-      <div class="muted"><b>Path selection</b></div>
+      <div class="sectionTitle">Path selection</div>
       <div id="pathsel" class="muted">Shift+click two real nodes to highlight the shortest path.</div>
 
       <hr />
@@ -173,7 +176,6 @@
   </div>
 
 <script>
-  // register fcose
   if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
 
   // ----------------------------- Config -----------------------------
@@ -198,7 +200,7 @@
     Innovation: "#FF9A3C"
   };
 
-  // ✅ Removed ValueChainStage hub (as you requested)
+  // ✅ ValueChainStage hub removed
   const HUBS = [
     { id: "HUB_MAT", label: "Material", title: "Materials" },
     { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
@@ -207,31 +209,24 @@
     { id: "HUB_INNO", label: "Innovation", title: "Innovations" }
   ];
 
-  // Neo4j-like expansion tuning
-  const BATCH = 12;              // show 12 new neighbors per double-click
-  const SEED_RADIUS = 110;       // where new nodes appear around clicked node
-  const SEED_JITTER = 28;        // small randomness
-  const LOCAL_HOPS = 2;          // how far local physics should include
-  const EDGE_LABEL_ZOOM = 1.05;  // show all relationship names when zoomed in
+  const BATCH = 12;
+  const SEED_RADIUS = 110;
+  const SEED_JITTER = 28;
+  const LOCAL_HOPS = 2;
+  const EDGE_LABEL_ZOOM = 1.05;
 
   let cy;
   let runningLayout = null;
 
-  // move mode (to prevent "node sticks to mouse")
   let moveMode = false;
 
-  // expansion state per node: {shownCount:number, orderedNeighbors:[id...]}
   const expandState = new Map();
-
-  // breadcrumb sequence of expansions
   const breadcrumb = [];
 
-  // shortest path selection
   let pathA = null;
   let pathB = null;
 
-  // filter state
-  const enabledLabels = new Map(); // label -> boolean
+  const enabledLabels = new Map();
 
   // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
@@ -268,7 +263,6 @@
   function renderValue(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).map(renderValue).join(" • ");
-
     if (typeof v === "string") {
       const s = v.trim();
       const isUrl = /^https?:\/\/|^mailto:/i.test(s);
@@ -281,7 +275,51 @@
     return String(v);
   }
 
-  // ----------------------------- Labels -----------------------------
+  // --------- “name first, description second” for details panel ----------
+  function getBestName(d) {
+    // d.title is already a nice label computed for the node
+    return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
+  }
+
+  function getBestDescription(d) {
+    const p = d.properties || {};
+    const candidates = [
+      "description",
+      "innovations_description",
+      "innovation_description",
+      "deliverables_description",
+      "deliverable_description",
+      "demonstrations_description",
+      "demonstration_description",
+      "partners_description",
+      "partner_description",
+      "material_description",
+      "phase_description",
+      "notes",
+      "summary",
+      "abstract"
+    ];
+
+    for (const k of candidates) {
+      const v = p[k] ?? d[k];
+      const s = (typeof v === "string") ? v.trim() : "";
+      if (s) return { key: k, value: v };
+    }
+    return null;
+  }
+
+  function isIdKey(k) {
+    const kk = String(k).toLowerCase();
+    return (
+      kk === "id" ||
+      kk === "elementid" ||
+      kk.endsWith("_id") ||
+      kk.includes("identity") ||
+      kk === "neo4j_id"
+    );
+  }
+
+  // ----------------------------- Labels (for node title in graph) -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = labels[0] || "Other";
@@ -319,65 +357,97 @@
   // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
+
+    const name = getBestName(d);
+    const type = d.kind === "hub" ? "Hub" : (d.label || "Node");
+
     const head = `
-      <div style="font-weight:700; font-size:16px; margin-bottom:6px;">${d.title || d.label || "Node"}</div>
-      <div class="muted">Type: <code>${d.label || "Node"}</code></div>
-      <hr />
+      <div class="bigTitle">${name}</div>
+      <div class="muted">Type: <code>${type}</code></div>
     `;
 
     if (d.kind === "hub") {
       document.getElementById("details").innerHTML = head + `
-        <div class="muted">
-          Category hub (visual-only).<br><br>
-          <b>Double click</b> to reveal nodes in this category.
-        </div>`;
+        <hr />
+        <div class="muted">Double click to reveal nodes in this category.</div>`;
       return;
     }
 
-    const topRows = Object.entries(d)
-      .filter(([k]) => !["color","title","kind","_placed","size","properties"].includes(k))
-      .sort((a,b) => a[0].localeCompare(b[0]))
-      .map(([k,v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${renderValue(v)}</div></div>`)
-      .join("");
+    // Description first (if exists)
+    const desc = getBestDescription(d);
+    const descHtml = desc ? `
+      <hr />
+      <div class="sectionTitle">Description</div>
+      <div class="descBox">${renderValue(desc.value)}</div>
+    ` : "";
 
+    // Build “Properties” list with priority:
+    // 1) Name-related keys
+    // 2) Description key removed (since we show it above)
+    // 3) Everything else (alphabetical)
     const props = d.properties || {};
-    const propRows = Object.entries(props)
-      .sort((a,b) => a[0].localeCompare(b[0]))
-      .map(([k,v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${renderValue(v)}</div></div>`)
+
+    const nameKeys = [
+      "name","title",
+      "innovations_name","innovations",
+      "deliverables_name","deliverables_no",
+      "demonstrations","demonstrations_type",
+      "partners","partners_legalname",
+      "material","phase_id","phases","phase_path"
+    ];
+
+    const skipKeys = new Set([
+      "color","title","kind","_placed","size","labels","label"
+    ]);
+
+    const descKey = desc?.key;
+
+    function includeKey(k) {
+      if (skipKeys.has(k)) return false;
+      if (descKey && k === descKey) return false;
+      if (isIdKey(k)) return false;
+      return true;
+    }
+
+    // priority list from properties
+    const priority = [];
+    for (const k of nameKeys) if (k in props && includeKey(k)) priority.push(k);
+
+    // then rest
+    const rest = Object.keys(props)
+      .filter(k => includeKey(k) && !priority.includes(k))
+      .sort((a,b)=>a.localeCompare(b));
+
+    const rows = [...priority, ...rest]
+      .map(k => `<div class="kv"><div class="k">${k}</div><div class="v">${renderValue(props[k])}</div></div>`)
       .join("");
 
-    // add quick actions for real node
-    let actions = "";
-    if (d.kind === "real") {
-      actions = `
-        <hr />
-        <div class="row">
-          <div class="btn smallbtn" id="btnExpandMore">Expand +${BATCH}</div>
-          <div class="btn smallbtn" id="btnCollapseNode">Collapse neighbors</div>
-          <div class="btn smallbtn" id="btnPin">${ele.locked() ? "Unpin" : "Pin"}</div>
-          <div class="btn smallbtn" id="btnCenter">Center</div>
-        </div>
-      `;
-    }
+    // Actions
+    const actions = `
+      <hr />
+      <div class="row">
+        <div class="btn smallbtn" id="btnExpandMore">Expand +${BATCH}</div>
+        <div class="btn smallbtn" id="btnCollapseNode">Collapse neighbors</div>
+        <div class="btn smallbtn" id="btnPin">${ele.locked() ? "Unpin" : "Pin"}</div>
+        <div class="btn smallbtn" id="btnCenter">Center</div>
+      </div>
+    `;
 
     document.getElementById("details").innerHTML =
       head +
-      (topRows || "") +
-      (propRows ? `<div class="muted" style="margin-top:10px; font-weight:700;">Properties</div>${propRows}` : `<div class="muted">No properties</div>`) +
+      descHtml +
+      `<hr /><div class="sectionTitle">Properties</div>` +
+      (rows || `<div class="muted">No properties</div>`) +
       actions;
 
-    if (d.kind === "real") {
-      // wire actions
-      const btnExpandMore = document.getElementById("btnExpandMore");
-      const btnCollapseNode = document.getElementById("btnCollapseNode");
-      const btnPin = document.getElementById("btnPin");
-      const btnCenter = document.getElementById("btnCenter");
-
-      if (btnExpandMore) btnExpandMore.onclick = () => expandRealNeighbors(ele, { forceMore:true });
-      if (btnCollapseNode) btnCollapseNode.onclick = () => collapseNeighborhood(ele);
-      if (btnPin) btnPin.onclick = () => { ele.lock(!ele.locked()); btnPin.textContent = ele.locked() ? "Unpin" : "Pin"; };
-      if (btnCenter) btnCenter.onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
-    }
+    // wire actions
+    document.getElementById("btnExpandMore").onclick = () => expandRealNeighbors(ele, { forceMore:true });
+    document.getElementById("btnCollapseNode").onclick = () => collapseNeighborhood(ele);
+    document.getElementById("btnPin").onclick = () => {
+      ele.lock(!ele.locked());
+      document.getElementById("btnPin").textContent = ele.locked() ? "Unpin" : "Pin";
+    };
+    document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
   }
 
   // ----------------------------- Hover focus -----------------------------
@@ -395,7 +465,7 @@
     });
   }
 
-  // ----------------------------- Move mode (Neo4j-like) -----------------------------
+  // ----------------------------- Move mode -----------------------------
   function setMoveMode(on){
     moveMode = on;
     cy.nodes().forEach(n => n.grabbable(on));
@@ -404,7 +474,7 @@
     b.classList.toggle("on", on);
   }
 
-  // ----------------------------- Hubs helpers -----------------------------
+  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -420,13 +490,15 @@
     runningLayout = null;
   }
 
+  // ✅ FIX: Home must show ALL hubs again (and undo any display:none)
   function homeView(force=true) {
     stopLayout();
-    // unlock everything
     cy.nodes().unlock();
-
-    // clear path/breadcrumb visuals
     clearHighlights({ keepBreadcrumb:false });
+
+    // Reset display styles (important!)
+    cy.nodes().style("display","element");
+    cy.edges().style("display","element");
 
     if (force) {
       cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -434,7 +506,9 @@
       cy.edges('[kind="hubEdge"]').remove();
     }
 
-    cy.$('node[kind="hub"]').removeClass("hidden");
+    // show all hubs
+    const hubNodes = cy.$('node[kind="hub"]');
+    hubNodes.removeClass("hidden").style("display","element");
 
     const w = cy.width(), h = cy.height();
     const cx = w * 0.47;
@@ -448,13 +522,17 @@
     });
 
     cy.zoom(1);
-    cy.center(cy.$('node[kind="hub"]'));
+    cy.center(hubNodes);
+
+    // ensure real nodes remain hidden on home
+    applyFilters();
+    cy.nodes('[kind="real"]').forEach(n => { n.addClass("hidden"); n.style("display","none"); });
+    cy.edges('[kind="realEdge"]').forEach(e => { e.addClass("hidden"); e.style("display","none"); });
 
     document.getElementById("details").innerHTML =
-      `<div class="muted">Home loaded: hubs only. Double click a hub to reveal that category.</div>`;
+      `<div class="muted">Home loaded. Double click a hub to open that category.</div>`;
   }
 
-  // ✅ show only selected hub + its category nodes (other hubs disappear)
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
@@ -468,17 +546,15 @@
     cy.edges('[kind="hubEdge"]').remove();
 
     // hide all hubs, show only selected
-    cy.$('node[kind="hub"]').addClass("hidden");
+    cy.$('node[kind="hub"]').addClass("hidden").style("display","none");
     const hub = cy.getElementById(hubId);
-    hub.removeClass("hidden");
+    hub.removeClass("hidden").style("display","element");
 
     const center = hub.position();
 
-    // show this category nodes
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
-    group.removeClass("hidden");
+    group.removeClass("hidden").style("display","element");
 
-    // add hub edges for this category (visual-only)
     const newEdges = [];
     group.forEach(n => {
       newEdges.push({
@@ -487,9 +563,8 @@
       });
     });
     if (newEdges.length) cy.add(newEdges);
-    cy.edges('[kind="hubEdge"]').removeClass("hidden");
+    cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
 
-    // ring placement
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
     const perRing = 18;
@@ -505,24 +580,20 @@
 
       n.position({ x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a) });
       n.data("_placed", true);
-
-      // reset expand state
       expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
     });
 
-    applyFilters(); // respect filters
-    cy.fit(cy.elements().filter(e => !e.hasClass("hidden")), 60);
+    applyFilters();
+    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 60);
 
     document.getElementById("details").innerHTML =
-      `<div class="muted"><b>${label}</b> opened. Double click any node to expand real relationships.</div>`;
+      `<div class="muted"><b>${label}</b> opened. Double click any node to expand.</div>`;
   }
 
-  // ----------------------------- Filters / legend -----------------------------
+  // ----------------------------- Filters -----------------------------
   function buildFiltersFromGraph() {
     const labels = new Set();
     cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
-
-    // default: everything enabled
     labels.forEach(l => enabledLabels.set(l, true));
 
     const sorted = [...labels].sort((a,b)=>a.localeCompare(b));
@@ -548,22 +619,15 @@
   }
 
   function applyFilters() {
-    // only affects real nodes (not hubs)
     cy.nodes('[kind="real"]').forEach(n => {
       const lbl = n.data("label") || "Other";
       const on = enabledLabels.get(lbl) !== false;
-      // if node is already hidden by navigation logic, keep it hidden
-      if (!on) n.addClass("filtered");
-      else n.removeClass("filtered");
+      n.toggleClass("filtered", !on);
+      // display controlled later by hidden/filtered + current screen state
+      if (n.hasClass("hidden") || !on) n.style("display","none");
+      else n.style("display","element");
     });
 
-    // effective hidden = hidden OR filtered
-    cy.nodes('[kind="real"]').forEach(n => {
-      if (n.hasClass("hidden") || n.hasClass("filtered")) n.style("display", "none");
-      else n.style("display", "element");
-    });
-
-    // edges visible only if both endpoints visible & edge not hidden
     cy.edges('[kind="realEdge"]').forEach(e => {
       const s = e.source(), t = e.target();
       const endpointsVisible = (s.style("display") !== "none") && (t.style("display") !== "none");
@@ -571,7 +635,6 @@
       else e.style("display","element");
     });
 
-    // hub edges too
     cy.edges('[kind="hubEdge"]').forEach(e => {
       const s = e.source(), t = e.target();
       const endpointsVisible = (s.style("display") !== "none") && (t.style("display") !== "none");
@@ -580,13 +643,13 @@
     });
   }
 
-  // ----------------------------- Breadcrumb -----------------------------
+  // ----------------------------- Breadcrumb + path highlighting -----------------------------
   function pushBreadcrumb(node) {
     const id = node.id();
     if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
-    const crumbs = document.getElementById("crumbs");
 
-    const items = breadcrumb.slice(-14).map((nid, i) => {
+    const crumbs = document.getElementById("crumbs");
+    const items = breadcrumb.slice(-14).map(nid => {
       const n = cy.getElementById(nid);
       const title = (n && n.length) ? (n.data("title") || nid) : nid;
       return `<span class="pill mono" data-nid="${nid}" style="cursor:pointer;">${title}</span>`;
@@ -601,8 +664,7 @@
       };
     });
 
-    // highlight the consecutive chain (if edges exist)
-    cy.elements().removeClass("crumbPath");
+    cy.elements().removeClass("crumbPath crumbPathNode");
     const chain = breadcrumb.slice(-10);
     for (let i=0; i<chain.length-1; i++){
       const a = cy.getElementById(chain[i]);
@@ -615,202 +677,6 @@
     }
   }
 
-  // ----------------------------- Neo4j-like local physics -----------------------------
-  function localSubgraphAround(node, hops=2) {
-    let s = node;
-    for (let i=0; i<hops; i++) s = s.closedNeighborhood();
-
-    // visible (not hidden/filtered) real graph only
-    const nodes = s.nodes().filter(n => n.data("kind")==="real" && n.style("display") !== "none");
-    const edges = s.edges().filter(e => e.data("kind")==="realEdge" && e.style("display") !== "none");
-    return nodes.union(edges);
-  }
-
-  function lockOutsideLocal(centerNode) {
-    const local = localSubgraphAround(centerNode, LOCAL_HOPS);
-    cy.nodes('[kind="real"]').forEach(n => {
-      if (n.style("display")==="none") return;
-      // keep pinned nodes pinned
-      if (n.locked()) return;
-      // lock outside local so old parts don't drift
-      if (local.contains(n)) n.unlock();
-      else n.lock();
-    });
-  }
-
-  function runLocalPhysics(centerNode) {
-    stopLayout();
-    const eles = localSubgraphAround(centerNode, LOCAL_HOPS);
-    if (eles.length < 2) return;
-
-    runningLayout = cy.layout({
-      name: "fcose",
-      eles,
-      animate: true,
-      animationDuration: 420,
-      fit: false,
-      padding: 40,
-
-      quality: "default",
-      randomize: false,
-
-      nodeRepulsion: 9000,
-      idealEdgeLength: 130,
-      edgeElasticity: 0.45,
-      gravity: 0.28,
-
-      nodeDimensionsIncludeLabels: true,
-      packComponents: true,
-
-      fixedNodeConstraint: [{
-        nodeId: centerNode.id(),
-        position: centerNode.position()
-      }]
-    });
-
-    runningLayout.run();
-  }
-
-  // ----------------------------- Expand / Collapse -----------------------------
-  function getOrderedNeighbors(node) {
-    // stable order: by label then by title (so repeated expands feel consistent)
-    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
-
-    neigh.sort((a,b) => {
-      const la = (a.data("label")||"").localeCompare(b.data("label")||"");
-      if (la) return la;
-      return (a.data("title")||a.id()).localeCompare(b.data("title")||b.id());
-    });
-    return neigh.map(n => n.id());
-  }
-
-  function seedNewNodesAround(centerNode, newNodes) {
-    const c = centerNode.position();
-    newNodes.forEach((n, i) => {
-      if (n.data("_placed")) return;
-      const angle = -Math.PI/2 + (2*Math.PI*i)/Math.max(newNodes.length, 1);
-      n.position({
-        x: c.x + Math.cos(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER,
-        y: c.y + Math.sin(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER
-      });
-      n.data("_placed", true);
-    });
-  }
-
-  function expandRealNeighbors(node, opts={}) {
-    // once exploring: hide hub + hubEdges (as you wanted)
-    cy.nodes('[kind="hub"]').addClass("hidden");
-    cy.edges('[kind="hubEdge"]').addClass("hidden");
-    cy.nodes('[kind="hub"]').style("display","none");
-    cy.edges('[kind="hubEdge"]').style("display","none");
-
-    node.removeClass("hidden");
-    node.removeClass("filtered");
-    node.style("display","element");
-
-    // init state
-    let st = expandState.get(node.id());
-    if (!st) st = { shownCount: 0, orderedNeighbors: null };
-    if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
-
-    // decide how many to show now
-    const step = BATCH;
-    const start = opts.forceMore ? st.shownCount : st.shownCount;
-    const end = Math.min(st.orderedNeighbors.length, start + step);
-
-    const toShowIds = st.orderedNeighbors.slice(0, end);
-    const newlyShown = [];
-
-    // show edges + nodes for these neighbors
-    const visibleRealIds = new Set();
-    toShowIds.forEach(id => visibleRealIds.add(id));
-    visibleRealIds.add(node.id());
-
-    // reveal neighbor nodes
-    toShowIds.forEach(id => {
-      const n = cy.getElementById(id);
-      if (!n.length) return;
-      const wasHidden = n.hasClass("hidden") || n.style("display")==="none";
-      n.removeClass("hidden");
-      // apply filter visibility
-      const lbl = n.data("label") || "Other";
-      const on = enabledLabels.get(lbl) !== false;
-      n.toggleClass("filtered", !on);
-      if (on) n.style("display","element");
-      else n.style("display","none");
-      if (wasHidden && on) newlyShown.push(n);
-    });
-
-    // reveal relevant edges between node <-> shown neighbors
-    const allEdges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-    allEdges.forEach(e => {
-      const s = e.source().id();
-      const t = e.target().id();
-      const ok = visibleRealIds.has(s) && visibleRealIds.has(t);
-
-      e.toggleClass("hidden", !ok);
-      // apply display based on endpoints
-      if (!ok) e.style("display","none");
-      else {
-        const sv = e.source().style("display") !== "none";
-        const tv = e.target().style("display") !== "none";
-        e.style("display", (sv && tv) ? "element" : "none");
-      }
-    });
-
-    // seed new nodes around clicked node
-    seedNewNodesAround(node, newlyShown);
-
-    // local physics settle (Neo4j-ish) but keep old parts stable
-    lockOutsideLocal(node);
-    runLocalPhysics(node);
-
-    st.shownCount = end;
-    expandState.set(node.id(), st);
-
-    pushBreadcrumb(node);
-
-    const remaining = Math.max(0, st.orderedNeighbors.length - st.shownCount);
-    document.getElementById("details").innerHTML =
-      `<div class="muted">
-        Expanded <b>${node.data("title")||node.id()}</b>.
-        Shown neighbors: <b>${st.shownCount}</b> / <b>${st.orderedNeighbors.length}</b>.
-        ${remaining ? `Remaining: <b>${remaining}</b> (use “Expand +${BATCH}” in Details or double click again).` : `No more neighbors.`}
-      </div>`;
-  }
-
-  // Collapse neighborhood around a node (keeps the node and any neighbors still connected elsewhere)
-  function collapseNeighborhood(node) {
-    stopLayout();
-
-    // hide its real edges
-    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-    edges.forEach(e => { e.addClass("hidden"); e.style("display","none"); });
-
-    // hide neighbor nodes that become isolated (no visible real edges)
-    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
-    neigh.forEach(n => {
-      const stillHasVisible = n.connectedEdges().filter(e => e.data("kind")==="realEdge" && !e.hasClass("hidden") && e.style("display")!=="none").length > 0;
-      if (!stillHasVisible && !n.locked()) {
-        n.addClass("hidden");
-        n.style("display","none");
-      }
-    });
-
-    // reset expand counter for this node
-    const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
-    st.shownCount = 0;
-    expandState.set(node.id(), st);
-
-    // unlock previously locked nodes except pinned
-    cy.nodes('[kind="real"]').forEach(n => { if (!n.locked()) n.unlock(); });
-
-    document.getElementById("details").innerHTML =
-      `<div class="muted">Collapsed neighborhood of <b>${node.data("title")||node.id()}</b>.</div>`;
-  }
-
-  // ----------------------------- Shortest path (Shift+click two nodes) -----------------------------
   function clearPathSelectionUI() {
     pathA = null; pathB = null;
     document.getElementById("pathsel").innerHTML = `Shift+click two real nodes to highlight the shortest path.`;
@@ -830,7 +696,6 @@
 
       const edges = curNode.connectedEdges().filter(e =>
         e.data("kind")==="realEdge" &&
-        !e.hasClass("hidden") &&
         e.style("display") !== "none"
       );
 
@@ -844,7 +709,6 @@
         if (!prev.has(n)) {
           prev.set(n, { node: cur, edgeId: e.id() });
           if (n === goalId) {
-            // reconstruct
             const nodes = [goalId];
             const edgesPath = [];
             let x = goalId;
@@ -880,17 +744,15 @@
     document.getElementById("pathsel").innerHTML =
       `<div class="muted">
         Shortest path length: <b>${Math.max(0, res.nodes.length-1)}</b><br>
-        A: <span class="mono">${a.data("title")||a.id()}</span><br>
-        B: <span class="mono">${b.data("title")||b.id()}</span>
+        A: <span class="mono">${a.data("title")||"Node"}</span><br>
+        B: <span class="mono">${b.data("title")||"Node"}</span>
       </div>`;
 
-    // fit path
     const eles = cy.collection(res.nodes.map(id => cy.getElementById(id)))
       .union(cy.collection(res.edges.map(id => cy.getElementById(id))));
     if (eles.length) cy.fit(eles, 70);
   }
 
-  // ----------------------------- Highlights / cleanup -----------------------------
   function clearHighlights({ keepBreadcrumb=true } = {}) {
     stopLayout();
     cy.elements().removeClass("spath spathNode crumbPath crumbPathNode");
@@ -899,6 +761,165 @@
       breadcrumb.length = 0;
       document.getElementById("crumbs").innerHTML = "—";
     }
+  }
+
+  // ----------------------------- Local physics -----------------------------
+  function localSubgraphAround(node, hops=2) {
+    let s = node;
+    for (let i=0; i<hops; i++) s = s.closedNeighborhood();
+    const nodes = s.nodes().filter(n => n.data("kind")==="real" && n.style("display") !== "none");
+    const edges = s.edges().filter(e => e.data("kind")==="realEdge" && e.style("display") !== "none");
+    return nodes.union(edges);
+  }
+
+  function lockOutsideLocal(centerNode) {
+    const local = localSubgraphAround(centerNode, LOCAL_HOPS);
+    cy.nodes('[kind="real"]').forEach(n => {
+      if (n.style("display")==="none") return;
+      if (n.locked()) return; // pinned stays pinned
+      if (local.contains(n)) n.unlock();
+      else n.lock();
+    });
+  }
+
+  function runLocalPhysics(centerNode) {
+    stopLayout();
+    const eles = localSubgraphAround(centerNode, LOCAL_HOPS);
+    if (eles.length < 2) return;
+
+    runningLayout = cy.layout({
+      name: "fcose",
+      eles,
+      animate: true,
+      animationDuration: 420,
+      fit: false,
+      padding: 40,
+      quality: "default",
+      randomize: false,
+      nodeRepulsion: 9000,
+      idealEdgeLength: 130,
+      edgeElasticity: 0.45,
+      gravity: 0.28,
+      nodeDimensionsIncludeLabels: true,
+      packComponents: true,
+      fixedNodeConstraint: [{
+        nodeId: centerNode.id(),
+        position: centerNode.position()
+      }]
+    });
+
+    runningLayout.run();
+  }
+
+  // ----------------------------- Expand / Collapse -----------------------------
+  function getOrderedNeighbors(node) {
+    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
+    neigh.sort((a,b) => {
+      const la = (a.data("label")||"").localeCompare(b.data("label")||"");
+      if (la) return la;
+      return (a.data("title")||a.id()).localeCompare(b.data("title")||b.id());
+    });
+    return neigh.map(n => n.id());
+  }
+
+  function seedNewNodesAround(centerNode, newNodes) {
+    const c = centerNode.position();
+    newNodes.forEach((n, i) => {
+      if (n.data("_placed")) return;
+      const angle = -Math.PI/2 + (2*Math.PI*i)/Math.max(newNodes.length, 1);
+      n.position({
+        x: c.x + Math.cos(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER,
+        y: c.y + Math.sin(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER
+      });
+      n.data("_placed", true);
+    });
+  }
+
+  function expandRealNeighbors(node, opts={}) {
+    // hide hubs + hub edges while exploring
+    cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
+    cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
+
+    node.removeClass("hidden").style("display","element");
+
+    let st = expandState.get(node.id());
+    if (!st) st = { shownCount: 0, orderedNeighbors: null };
+    if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
+
+    const start = st.shownCount;
+    const end = Math.min(st.orderedNeighbors.length, start + BATCH);
+
+    const toShowIds = st.orderedNeighbors.slice(0, end);
+    const newlyShown = [];
+
+    toShowIds.forEach(id => {
+      const n = cy.getElementById(id);
+      if (!n.length) return;
+
+      const lbl = n.data("label") || "Other";
+      const on = enabledLabels.get(lbl) !== false;
+
+      const wasHidden = (n.style("display")==="none");
+      n.removeClass("hidden");
+      n.toggleClass("filtered", !on);
+      n.style("display", on ? "element" : "none");
+
+      if (wasHidden && on) newlyShown.push(n);
+    });
+
+    const visibleIds = new Set(toShowIds);
+    visibleIds.add(node.id());
+
+    const allEdges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    allEdges.forEach(e => {
+      const s = e.source().id();
+      const t = e.target().id();
+      const ok = visibleIds.has(s) && visibleIds.has(t);
+
+      e.toggleClass("hidden", !ok);
+      if (!ok) e.style("display","none");
+      else {
+        const sv = e.source().style("display") !== "none";
+        const tv = e.target().style("display") !== "none";
+        e.style("display", (sv && tv) ? "element" : "none");
+      }
+    });
+
+    seedNewNodesAround(node, newlyShown);
+
+    lockOutsideLocal(node);
+    runLocalPhysics(node);
+
+    st.shownCount = end;
+    expandState.set(node.id(), st);
+
+    pushBreadcrumb(node);
+    showDetails(node); // keep details panel consistent & ordered
+  }
+
+  function collapseNeighborhood(node) {
+    stopLayout();
+
+    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    edges.forEach(e => { e.addClass("hidden"); e.style("display","none"); });
+
+    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
+    neigh.forEach(n => {
+      const stillHasVisible = n.connectedEdges().filter(e => e.data("kind")==="realEdge" && e.style("display")!=="none").length > 0;
+      if (!stillHasVisible && !n.locked()) {
+        n.addClass("hidden");
+        n.style("display","none");
+      }
+    });
+
+    const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
+    st.shownCount = 0;
+    expandState.set(node.id(), st);
+
+    cy.nodes('[kind="real"]').forEach(n => { if (!n.locked()) n.unlock(); });
+
+    showDetails(node);
   }
 
   // ----------------------------- Edge label visibility -----------------------------
@@ -913,12 +934,12 @@
   let lastTapId = null;
 
   function handleTap(ele, evt) {
-    // Shift+click = shortest path selection
+    // Shift+click: shortest path
     if (evt && evt.originalEvent && evt.originalEvent.shiftKey && ele.data("kind")==="real") {
       if (!pathA) {
         pathA = ele;
         document.getElementById("pathsel").innerHTML =
-          `<div class="muted">Selected A: <span class="mono">${ele.data("title")||ele.id()}</span><br>Now Shift+click node B.</div>`;
+          `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
         return;
       }
       if (!pathB) {
@@ -926,42 +947,31 @@
         highlightShortestPath(pathA, pathB);
         return;
       }
-      // third shift-click resets and starts over
       clearHighlights({ keepBreadcrumb:true });
       pathA = ele;
       document.getElementById("pathsel").innerHTML =
-        `<div class="muted">Selected A: <span class="mono">${ele.data("title")||ele.id()}</span><br>Now Shift+click node B.</div>`;
+        `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
       return;
     }
 
-    // double click detection
     const now = Date.now();
     const id = ele.id();
     const isDouble = (lastTapId === id && (now - lastTapTime) < 350);
     lastTapTime = now;
     lastTapId = id;
 
-    if (!isDouble) {
-      showDetails(ele);
-      return;
-    }
+    if (!isDouble) { showDetails(ele); return; }
 
     const d = ele.data();
-    if (d.kind === "hub") {
-      revealCategory(d.label);
-    } else {
-      expandRealNeighbors(ele);
-    }
+    if (d.kind === "hub") revealCategory(d.label);
+    else expandRealNeighbors(ele);
   }
 
-  // Right click = pin/unpin (Neo4j-like)
   function enablePinOnRightClick() {
     cy.on("cxttap", "node[kind='real']", (evt) => {
       const n = evt.target;
       n.lock(!n.locked());
-      const state = n.locked() ? "Pinned" : "Unpinned";
-      document.getElementById("details").innerHTML =
-        `<div class="muted">${state}: <b>${n.data("title")||n.id()}</b></div>`;
+      showDetails(n);
     });
   }
 
@@ -1044,11 +1054,7 @@
   function unwrapAnyNeo4jJson(raw) {
     if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
     if (raw?.elements?.nodes && (raw.elements.edges || raw.elements.relationships)) return raw.elements;
-
-    if (raw?.nodes && (raw?.relationships || raw?.edges)) {
-      return { nodes: raw.nodes, edges: raw.relationships || raw.edges };
-    }
-
+    if (raw?.nodes && (raw?.relationships || raw?.edges)) return { nodes: raw.nodes, edges: raw.relationships || raw.edges };
     if (Array.isArray(raw) && raw.length && typeof raw[0] === "object") {
       const el = rowsNrmToElements(raw);
       return { nodes: el.nodes, edges: el.edges };
@@ -1137,11 +1143,9 @@
         { selector: ".dim", style: { "opacity": 0.10 } },
         { selector: ".hi", style: { "opacity": 1, "shadow-blur": 30, "shadow-opacity": 0.7, "shadow-color": "#ffffff" } },
 
-        // Breadcrumb chain highlight
         { selector: ".crumbPathNode", style: { "border-width": 4, "border-color":"rgba(255,255,255,0.55)" } },
         { selector: "edge.crumbPath", style: { "width": 3, "line-color":"rgba(255,255,255,0.35)", "target-arrow-color":"rgba(255,255,255,0.45)" } },
 
-        // Shortest-path highlight
         { selector: ".spathNode", style: { "border-width": 4, "border-color":"rgba(0,229,255,0.65)" } },
         { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
 
@@ -1212,19 +1216,16 @@
       motionBlur: false
     });
 
-    // Neo4j-like: prevent accidental dragging by default
+    // default: no accidental dragging
     setMoveMode(false);
 
-    // hover focus
     enableHoverFocus();
+    enablePinOnRightClick();
 
-    // interactions
     cy.on("tap","node",(evt)=>handleTap(evt.target, evt));
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
-    enablePinOnRightClick();
 
-    // buttons
     document.getElementById("btnHome").onclick = () => homeView(true);
     document.getElementById("btnCollapse").onclick = () => homeView(true);
     document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
@@ -1246,7 +1247,6 @@
     document.getElementById("btnMove").onclick = () => setMoveMode(!moveMode);
     document.getElementById("btnClear").onclick = () => clearHighlights({ keepBreadcrumb:true });
 
-    // search
     document.getElementById("search").addEventListener("keydown",(e)=>{
       if (e.key !== "Enter") return;
       const q = e.target.value.trim().toLowerCase();
@@ -1255,26 +1255,21 @@
       const hit = cy.nodes().filter(n=>{
         const d=n.data();
         if (d.kind!=="real") return false;
-        const vals = Object.values(d).concat(Object.values(d.properties || {}));
-        return vals.some(v => asNiceText(v).toLowerCase().includes(q));
+        const vals = Object.values(d.properties || {});
+        return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
+               asNiceText(d.title).toLowerCase().includes(q);
       }).first();
 
       if (hit && hit.length) {
-        hit.removeClass("hidden");
-        hit.removeClass("filtered");
-        hit.style("display","element");
+        hit.removeClass("hidden").removeClass("filtered").style("display","element");
         showDetails(hit);
         cy.animate({ center:{ eles: hit } }, { duration: 200 });
       }
     });
 
-    // build filters now that cy exists
     buildFiltersFromGraph();
-
-    // init expand state defaults
     cy.nodes('[kind="real"]').forEach(n => expandState.set(n.id(), { shownCount:0, orderedNeighbors:null }));
 
-    // go home
     homeView(true);
   }
 
