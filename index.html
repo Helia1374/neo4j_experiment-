@@ -2,19 +2,32 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Graph Explorer</title>
+  <title>Graph Explorer (Neo4j-like Expand)</title>
+
+  <!-- Cytoscape core -->
   <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+
+  <!-- ✅ Neo4j-like “physics” layout (shake + settle) -->
+  <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
 
   <style>
     html, body { width:100%; height:100%; margin:0; font-family: Arial, sans-serif; background:#070A12; }
     #app { display:flex; width:100%; height:100%; }
-    #cy {
-      flex: 1; height: 100%; position: relative;
+
+    #cy{
+      flex: 1;
+      height: 100%;
+      position: relative;
       background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
       overflow: hidden;
     }
+
     #cy::before{
-      content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
       background:
         radial-gradient(circle at 15% 25%, rgba(0,229,255,.10) 0%, transparent 52%),
         radial-gradient(circle at 85% 30%, rgba(255,43,214,.09) 0%, transparent 52%),
@@ -25,35 +38,48 @@
       animation: drift 12s ease-in-out infinite alternate;
     }
 
-    /* keep Cytoscape canvas layers aligned */
+    /* ✅ IMPORTANT: keep Cytoscape canvas layers aligned */
     #cy canvas{
       position:absolute !important;
       inset:0 !important;
       z-index:1;
     }
 
-    @keyframes drift { from { transform: translate3d(-5px,-3px,0) scale(1.01); } to { transform: translate3d(6px,5px,0) scale(1.03); } }
+    @keyframes drift {
+      from { transform: translate3d(-5px,-3px,0) scale(1.01); }
+      to   { transform: translate3d(6px,5px,0) scale(1.03); }
+    }
 
-    #side {
-      width: 380px; border-left: 1px solid rgba(255,255,255,0.08);
-      padding: 12px; box-sizing: border-box; overflow: auto;
+    #side{
+      width: 380px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      padding: 12px;
+      box-sizing: border-box;
+      overflow: auto;
       background: linear-gradient(180deg, rgba(15,18,34,0.98), rgba(8,10,18,0.98));
       color: #E9ECFF;
     }
-    #toolbar {
-      position: fixed; top: 12px; left: 12px; z-index: 999;
+
+    #toolbar{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 999;
       background: rgba(10,12,22,0.85);
       border: 1px solid rgba(255,255,255,0.10);
       border-radius: 12px;
       box-shadow: 0 8px 30px rgba(0,0,0,0.45);
       padding: 10px 12px;
-      display: flex; gap: 8px; align-items: center;
+      display: flex;
+      gap: 8px;
+      align-items: center;
       backdrop-filter: blur(8px);
       color: #E9ECFF;
       max-width: 1180px;
       flex-wrap: wrap;
     }
-    .btn {
+
+    .btn{
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.06);
       color: #E9ECFF;
@@ -62,14 +88,19 @@
       cursor: pointer;
       user-select: none;
     }
-    .btn:hover { background: rgba(255,255,255,0.12); }
-    #search {
-      width: 280px; padding: 8px 10px; border-radius: 10px;
+    .btn:hover{ background: rgba(255,255,255,0.12); }
+
+    #search{
+      width: 280px;
+      padding: 8px 10px;
+      border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.06);
-      color: #E9ECFF; outline: none;
+      color: #E9ECFF;
+      outline: none;
     }
-    #search::placeholder { color: rgba(233,236,255,0.6); }
+    #search::placeholder{ color: rgba(233,236,255,0.6); }
+
     h3 { margin: 8px 0 10px; }
     .muted { color: rgba(233,236,255,0.65); font-size: 12px; line-height: 1.4; }
     .kv { margin: 10px 0; }
@@ -101,7 +132,7 @@
       <div id="details" class="muted">Home shows hubs. Double click one hub to open that category.</div>
       <hr />
       <div class="muted">
-        Tip: Hover a node to reduce clutter. Relationship names show on focused edges (and when zoomed in).
+        Neo4j-like mode: expanding runs a local “shake & settle” layout to reduce overlaps.
       </div>
       <hr />
       <div id="debug" class="muted"></div>
@@ -109,6 +140,9 @@
   </div>
 
 <script>
+  // Register fcose
+  if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
+
   // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
@@ -131,7 +165,7 @@
     Innovation: "#FF9A3C"
   };
 
-  // ✅ ValueChainStage hub removed
+  // ✅ Removed ValueChainStage hub
   const HUBS = [
     { id: "HUB_MAT", label: "Material", title: "Materials" },
     { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
@@ -142,11 +176,11 @@
 
   let cy;
 
-  // ✅ expansion controls
-  const MAX_NEW_NEIGHBORS_PER_EXPAND = 18;  // change to 30/50 if you want
-  const MIN_DIST = 105;                    // collision distance
-  const BASE_RING = 190;                   // first ring radius
-  const RING_STEP = 65;                    // ring spacing
+  // “Neo4j-like” expansion tuning
+  const MAX_NEW_NEIGHBORS_PER_EXPAND = 25;   // prevent explosions
+  const SEED_JITTER = 26;                    // new nodes start near click
+  const LOCAL_LAYOUT_RADIUS_HOPS = 2;        // include 2-hop area in local physics
+  const EDGE_LABEL_ZOOM = 1.05;
 
   // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
@@ -282,7 +316,7 @@
     });
   }
 
-  // ----------------------------- Hubs helpers -----------------------------
+  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -320,7 +354,7 @@
       `<div class="muted">Home loaded: hubs only. Double click a hub to reveal that category.</div>`;
   }
 
-  // show only selected hub + its category nodes
+  // ✅ show only selected hub + its category nodes (other hubs disappear)
   function revealCategory(label) {
     const hubId = hubIdFor(label);
     if (!hubId) return;
@@ -338,6 +372,7 @@
     const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden");
 
+    // hub edges (visual-only)
     const newEdges = [];
     group.forEach(n => {
       newEdges.push({
@@ -348,6 +383,7 @@
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden");
 
+    // ring placement (stable)
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
     const perRing = 18;
@@ -368,108 +404,122 @@
     cy.fit(cy.elements().filter(e => !e.hasClass("hidden")), 60);
 
     document.getElementById("details").innerHTML =
-      `<div class="muted"><b>${label}</b> opened. Double click any node to expand its real relationships.</div>`;
+      `<div class="muted"><b>${label}</b> opened. Double click any node to expand its real relationships (Neo4j-like).</div>`;
   }
 
-  // ----------------------------- Smart placement (NO global layout) -----------------------------
-  function dist2(a, b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
-
-  function isFree(pos, excludeId=null){
-    const min2 = MIN_DIST * MIN_DIST;
-    const visible = cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden") && n.id() !== excludeId);
-    for (let i=0; i<visible.length; i++){
-      const p = visible[i].position();
-      if (dist2(p, pos) < min2) return false;
-    }
-    return true;
+  // ----------------------------- Neo4j-like local physics -----------------------------
+  let runningLayout = null;
+  function stopLayout() {
+    try { if (runningLayout) runningLayout.stop(); } catch(e) {}
+    runningLayout = null;
   }
 
-  function findFreeSpiral(center, angle0, excludeId=null){
-    // spiral out across rings
-    for (let ring=0; ring<10; ring++){
-      const r = BASE_RING + ring * RING_STEP;
-      const steps = 14 + ring * 4;
-      for (let s=0; s<steps; s++){
-        const a = angle0 + (2*Math.PI*s)/steps;
-        const pos = { x: center.x + r*Math.cos(a), y: center.y + r*Math.sin(a) };
-        if (isFree(pos, excludeId)) return pos;
-      }
-    }
-    // fallback
-    return { x: center.x + (BASE_RING+9*RING_STEP), y: center.y };
+  function localSubgraphAround(node, hops=2) {
+    let s = node;
+    for (let i=0; i<hops; i++) s = s.closedNeighborhood();
+    // keep only visible real nodes/edges (ignore hidden and hub edges)
+    const nodes = s.nodes().filter(n => n.data("kind")==="real" && !n.hasClass("hidden"));
+    const edges = s.edges().filter(e => e.data("kind")==="realEdge" && !e.hasClass("hidden"));
+    return nodes.union(edges);
   }
 
-  // Expand neighbors and keep previous expansions visible + organized
+  function runLocalPhysics(centerNode) {
+    stopLayout();
+
+    const eles = localSubgraphAround(centerNode, LOCAL_LAYOUT_RADIUS_HOPS);
+    if (eles.length < 2) return;
+
+    runningLayout = cy.layout({
+      name: "fcose",
+      eles,
+      animate: true,
+      animationDuration: 450,
+      fit: false,
+      padding: 40,
+
+      // “Neo4j-ish” spacing
+      quality: "default",
+      randomize: false,
+      nodeRepulsion: 9000,
+      idealEdgeLength: 130,
+      edgeElasticity: 0.45,
+      gravity: 0.3,
+
+      // reduce overlaps
+      nodeDimensionsIncludeLabels: true,
+      packComponents: true,
+
+      // keep the clicked node roughly where it is (prevents big jumps)
+      fixedNodeConstraint: [{
+        nodeId: centerNode.id(),
+        position: centerNode.position()
+      }]
+    });
+
+    runningLayout.run();
+  }
+
+  // ----------------------------- Expand (Neo4j-like) -----------------------------
   function expandRealNeighbors(node) {
-    // hide hub and hubEdges once you start exploring (your requested behavior)
+    // hide hub + hub edges when exploring real relationships (your desired behavior)
     cy.nodes('[kind="hub"]').addClass("hidden");
     cy.edges('[kind="hubEdge"]').addClass("hidden");
 
     node.removeClass("hidden");
 
-    const realEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
-    const neighbors = realEdges.connectedNodes().filter(n => n.id() !== node.id());
+    const allRealEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
+    const allNeighbors = allRealEdges.connectedNodes().filter(n => n.id() !== node.id());
 
-    // reveal edges + neighbor nodes (but cap how many NEW nodes appear per click)
-    realEdges.removeClass("hidden");
+    // show edges
+    allRealEdges.removeClass("hidden");
 
-    const center = node.position();
+    // show neighbors, capped for sanity
+    const hiddenFirst = allNeighbors.toArray().sort((a,b) => (a.hasClass("hidden")?0:1) - (b.hasClass("hidden")?0:1));
     let newlyShown = [];
-
-    // prioritize: show hidden neighbors first, but don’t explode
-    const hiddenFirst = neighbors.toArray().sort((a,b) => {
-      const ah = a.hasClass("hidden") ? 0 : 1;
-      const bh = b.hasClass("hidden") ? 0 : 1;
-      return ah - bh;
-    });
-
     for (const n of hiddenFirst) {
       const wasHidden = n.hasClass("hidden");
       n.removeClass("hidden");
-
       if (wasHidden) newlyShown.push(n);
-
-      // cap only for NEW nodes (already visible ones can remain)
       if (newlyShown.length >= MAX_NEW_NEIGHBORS_PER_EXPAND) break;
     }
 
-    // if we capped, keep edges only to visible neighbors (hide edges to still-hidden nodes)
-    const visibleIds = new Set(cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden")).map(n => n.id()));
-    realEdges.forEach(e => {
-      if (!visibleIds.has(e.source().id()) || !visibleIds.has(e.target().id())) e.addClass("hidden");
+    // hide edges that connect to still-hidden neighbors (keeps view clean)
+    const visibleReal = new Set(cy.nodes('[kind="real"]').filter(n => !n.hasClass("hidden")).map(n => n.id()));
+    allRealEdges.forEach(e => {
+      if (!visibleReal.has(e.source().id()) || !visibleReal.has(e.target().id())) e.addClass("hidden");
       else e.removeClass("hidden");
     });
 
-    // place only the NEW nodes around the clicked node with collision avoidance
+    // seed new nodes near the clicked node (Neo4j style)
+    const c = node.position();
     newlyShown.forEach((n, i) => {
       if (!n.data("_placed")) {
-        const angle0 = -Math.PI/2 + (2*Math.PI*i)/Math.max(newlyShown.length, 1);
-        const pos = findFreeSpiral(center, angle0, n.id());
-        n.position(pos);
+        const angle = -Math.PI/2 + (2*Math.PI*i)/Math.max(newlyShown.length, 1);
+        n.position({
+          x: c.x + Math.cos(angle) * (80 + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER,
+          y: c.y + Math.sin(angle) * (80 + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER
+        });
         n.data("_placed", true);
       }
     });
 
-    // small gentle nudge: spread newly shown nodes a bit further if still close
-    // (keeps sequences readable without moving everything)
-    newlyShown.forEach(n => {
-      const p = n.position();
-      if (!isFree(p, n.id())) {
-        const angle = Math.atan2(p.y - center.y, p.x - center.x);
-        const pos = findFreeSpiral(center, angle, n.id());
-        n.position(pos);
-      }
-    });
-
-    cy.animate({ center: { eles: node } }, { duration: 160 });
+    // ✅ local “shake & settle” around the node
+    runLocalPhysics(node);
 
     const msg = newlyShown.length >= MAX_NEW_NEIGHBORS_PER_EXPAND
-      ? `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Showing first <b>${MAX_NEW_NEIGHBORS_PER_EXPAND}</b> new neighbors to avoid clutter. Double click again to reveal more.</div>`
-      : `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Previous nodes stay visible (sequence kept).</div>`;
+      ? `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Showing first <b>${MAX_NEW_NEIGHBORS_PER_EXPAND}</b> new neighbors. Double click again to reveal more.</div>`
+      : `<div class="muted">Expanded <b>${node.data("title")||"node"}</b>. Sequence kept; local layout reduces overlaps.</div>`;
     document.getElementById("details").innerHTML = msg;
   }
 
-  // Double click detection
+  // ----------------------------- Edge label visibility -----------------------------
+  function updateEdgeLabelVisibility() {
+    const z = cy.zoom();
+    if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
+    else cy.edges().removeClass("show-edge-labels");
+  }
+
+  // ----------------------------- Double click detection -----------------------------
   let lastTapTime = 0;
   let lastTapId = null;
   function handleTap(ele) {
@@ -486,14 +536,7 @@
     else expandRealNeighbors(ele);
   }
 
-  const EDGE_LABEL_ZOOM = 1.05;
-  function updateEdgeLabelVisibility() {
-    const z = cy.zoom();
-    if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
-    else cy.edges().removeClass("show-edge-labels");
-  }
-
-  // ----------------------------- JSON parsing -----------------------------
+  // ----------------------------- JSON parsing (unchanged) -----------------------------
   function rowsNrmToElements(rows) {
     const nodeMap = new Map();
     const idMap = new Map();
@@ -671,10 +714,16 @@
             "background-color":"data(color)",
             "width":"data(size)","height":"data(size)",
             "border-width":2,"border-color":"rgba(255,255,255,0.18)",
-            "label":"data(title)","color":"#E9ECFF","font-size":12,
-            "text-wrap":"wrap","text-max-width":120,
-            "text-outline-width":4,"text-outline-color":"#000",
-            "shadow-blur":16,"shadow-color":"data(color)","shadow-opacity":0.30
+            "label":"data(title)",
+            "color":"#E9ECFF",
+            "font-size":12,
+            "text-wrap":"wrap",
+            "text-max-width":120,
+            "text-outline-width":4,
+            "text-outline-color":"#000",
+            "shadow-blur":16,
+            "shadow-color":"data(color)",
+            "shadow-opacity":0.30
           }
         },
         {
@@ -683,9 +732,15 @@
             "width":125,"height":125,
             "border-width":5,"border-color":"rgba(233,236,255,0.35)",
             "background-color":"data(color)","background-opacity":0.88,
-            "label":"data(title)","color":"#FFF","font-size":18,"font-weight":"bold",
-            "text-outline-width":5,"text-outline-color":"#000",
-            "shadow-blur":30,"shadow-color":"data(color)","shadow-opacity":0.60
+            "label":"data(title)",
+            "color":"#FFF",
+            "font-size":18,
+            "font-weight":"bold",
+            "text-outline-width":5,
+            "text-outline-color":"#000",
+            "shadow-blur":30,
+            "shadow-color":"data(color)",
+            "shadow-opacity":0.60
           }
         },
 
@@ -701,31 +756,20 @@
             "target-arrow-color":"rgba(200,220,255,0.40)",
             "label":"",
             "font-size":10,
-            "color":"rgba(255,255,255,0.90)",
+            "color":"rgba(255,255,255,0.92)",
             "text-outline-width":4,
-            "text-outline-color":"#000"
-          }
-        },
-        {
-          selector: "edge.show-edge-labels",
-          style: {
-            "label":"data(label)",
+            "text-outline-color":"#000",
             "text-background-opacity":0.70,
-            "text-background-color":"rgba(0,0,0,0.75)",
+            "text-background-color":"rgba(0,0,0,0.72)",
             "text-background-padding":"2px",
             "text-rotation":"autorotate"
           }
         },
-        {
-          selector:"edge.edgeLabelOn",
-          style:{
-            "label":"data(label)",
-            "text-background-opacity":0.70,
-            "text-background-color":"rgba(0,0,0,0.75)",
-            "text-background-padding":"2px",
-            "text-rotation":"autorotate"
-          }
-        },
+        /* show relationship names (Neo4j-like) when zoomed in */
+        { selector: "edge.show-edge-labels", style: { "label":"data(label)" } },
+        /* show relationship names for focused edges too */
+        { selector: "edge.edgeLabelOn", style: { "label":"data(label)" } },
+
         {
           selector:'edge[kind="hubEdge"]',
           style:{
@@ -757,11 +801,12 @@
     cy.on("zoom", updateEdgeLabelVisibility);
     updateEdgeLabelVisibility();
 
-    document.getElementById("btnHome").onclick = () => homeView(true);
-    document.getElementById("btnCollapse").onclick = () => homeView(true);
+    document.getElementById("btnHome").onclick = () => { stopLayout(); homeView(true); };
+    document.getElementById("btnCollapse").onclick = () => { stopLayout(); homeView(true); };
     document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
 
     document.getElementById("btnShowAll").onclick = () => {
+      stopLayout();
       cy.nodes().removeClass("hidden");
       cy.edges().removeClass("hidden");
       document.getElementById("details").innerHTML =
