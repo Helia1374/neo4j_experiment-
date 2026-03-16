@@ -37,6 +37,7 @@
       animation: drift 12s ease-in-out infinite alternate;
     }
 
+    /* ✅ Keep Cytoscape canvas layers aligned */
     #cy canvas{
       position:absolute !important;
       inset:0 !important;
@@ -186,8 +187,6 @@
     Demonstration: "#FFD34A",
     Innovation: "#FF7A00",
     KeyExploitableResult: "#7CFFB2",
-    KeyExploitableResults: "#7CFFB2",
-    KER: "#7CFFB2",
     Phase: "#A3A9FF",
     CircularPath: "#B8BFFF",
     Path: "#B8BFFF",
@@ -203,6 +202,7 @@
     KeyExploitableResult: "#7CFFB2"
   };
 
+  // ✅ ValueChainStage hub removed
   const HUBS = [
     { id: "HUB_MAT", label: "Material", title: "Materials" },
     { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
@@ -220,6 +220,7 @@
 
   let cy;
   let runningLayout = null;
+
   let moveMode = false;
 
   const expandState = new Map();
@@ -236,22 +237,6 @@
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
     if (typeof v === "object") return JSON.stringify(v);
     return String(v);
-  }
-
-  function normalizeLabel(label) {
-    const l = String(label || "").toLowerCase().replace(/[\s_\-]/g, "");
-    if (l === "material") return "material";
-    if (l === "partner") return "partner";
-    if (l === "deliverable") return "deliverable";
-    if (l === "demonstration") return "demonstration";
-    if (l === "innovation") return "innovation";
-    if (l === "valuechainstage") return "valuechainstage";
-    if (
-      l === "keyexploitableresult" ||
-      l === "keyexploitableresults" ||
-      l === "ker"
-    ) return "keyexploitableresult";
-    return l;
   }
 
   function neoId(x) {
@@ -293,7 +278,9 @@
     return String(v);
   }
 
+  // --------- “name first, description second” for details panel ----------
   function getBestName(d) {
+    // d.title is already a nice label computed for the node
     return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
   }
 
@@ -311,8 +298,6 @@
       "partner_description",
       "material_description",
       "phase_description",
-      "key_exploitable_result_description",
-      "key_exploitable_results_description",
       "notes",
       "summary",
       "abstract"
@@ -343,23 +328,17 @@
     const label = labels[0] || "Other";
     const p = d.properties || {};
 
-    if (normalizeLabel(label) === "material") return asNiceText(p.material) || asNiceText(p.name) || asNiceText(d.id);
-
-    if (normalizeLabel(label) === "valuechainstage") {
+    if (label === "Material") return asNiceText(p.material) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "ValueChainStage") {
       const stage = asNiceText(p.name);
       const mat = asNiceText(p.material);
       return (stage && mat) ? `${stage} (${mat})` : (stage || mat || asNiceText(d.id));
     }
-
-    if (normalizeLabel(label) === "partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(d.id);
-    if (normalizeLabel(label) === "deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
-    if (normalizeLabel(label) === "demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
-    if (normalizeLabel(label) === "innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
-
-    if (normalizeLabel(label) === "keyexploitableresult") {
-      return asNiceText(p.name) || asNiceText(p.title) || asNiceText(d.id);
-    }
-
+    if (label === "Partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(d.id);
+    if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
+    if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
+    if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
+    if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(p.title) || asNiceText(d.id);
     if (label === "Phase") return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "CircularPath" || label === "Path") return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
 
@@ -367,22 +346,18 @@
   }
 
   function sizeForLabel(label) {
-    if (normalizeLabel(label) === "material") return 24;
-    if (normalizeLabel(label) === "valuechainstage") return 23;
-    if (normalizeLabel(label) === "partner") return 24;
-    if (normalizeLabel(label) === "deliverable") return 22;
-    if (normalizeLabel(label) === "demonstration") return 21;
-    if (normalizeLabel(label) === "innovation") return 21;
-    if (normalizeLabel(label) === "keyexploitableresult") return 22;
+    if (label === "Material") return 24;
+    if (label === "ValueChainStage") return 23;
+    if (label === "Partner") return 24;
+    if (label === "Deliverable") return 22;
+    if (label === "Demonstration") return 21;
+    if (label === "Innovation") return 21;
+    if (label === "KeyExploitableResult") return 22;
     if (label === "Phase") return 18;
     if (label === "CircularPath" || label === "Path") return 20;
     return 16;
   }
-
-  function colorForLabel(label) {
-    if (normalizeLabel(label) === "keyexploitableresult") return COLORS.KeyExploitableResult;
-    return COLORS[label] || COLORS.Other;
-  }
+  function colorForLabel(label) { return COLORS[label] || COLORS.Other; }
 
   // ----------------------------- Details -----------------------------
   function showDetails(ele) {
@@ -403,6 +378,7 @@
       return;
     }
 
+    // Description first (if exists)
     const desc = getBestDescription(d);
     const descHtml = desc ? `
       <hr />
@@ -410,6 +386,10 @@
       <div class="descBox">${renderValue(desc.value)}</div>
     ` : "";
 
+    // Build “Properties” list with priority:
+    // 1) Name-related keys
+    // 2) Description key removed (since we show it above)
+    // 3) Everything else (alphabetical)
     const props = d.properties || {};
 
     const nameKeys = [
@@ -418,9 +398,6 @@
       "deliverables_name","deliverables_no",
       "demonstrations","demonstrations_type",
       "partners","partners_legalname",
-      "key_exploitable_result","key_exploitable_results",
-      "category",
-      "background IP","background_ip","Background IP",
       "material","phase_id","phases","phase_path"
     ];
 
@@ -437,9 +414,11 @@
       return true;
     }
 
+    // priority list from properties
     const priority = [];
     for (const k of nameKeys) if (k in props && includeKey(k)) priority.push(k);
 
+    // then rest
     const rest = Object.keys(props)
       .filter(k => includeKey(k) && !priority.includes(k))
       .sort((a,b)=>a.localeCompare(b));
@@ -448,6 +427,7 @@
       .map(k => `<div class="kv"><div class="k">${k}</div><div class="v">${renderValue(props[k])}</div></div>`)
       .join("");
 
+    // Actions
     const actions = `
       <hr />
       <div class="row">
@@ -465,6 +445,7 @@
       (rows || `<div class="muted">No properties</div>`) +
       actions;
 
+    // wire actions
     document.getElementById("btnExpandMore").onclick = () => expandRealNeighbors(ele, { forceMore:true });
     document.getElementById("btnCollapseNode").onclick = () => collapseNeighborhood(ele);
     document.getElementById("btnPin").onclick = () => {
@@ -500,7 +481,7 @@
 
   // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
-    const L = normalizeLabel(label);
+    const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
     if (L === "partner") return "HUB_PARTNER";
     if (L === "deliverable") return "HUB_DELIV";
@@ -515,11 +496,13 @@
     runningLayout = null;
   }
 
+  // ✅ FIX: Home must show ALL hubs again (and undo any display:none)
   function homeView(force=true) {
     stopLayout();
     cy.nodes().unlock();
     clearHighlights({ keepBreadcrumb:false });
 
+    // Reset display styles (important!)
     cy.nodes().style("display","element");
     cy.edges().style("display","element");
 
@@ -529,6 +512,7 @@
       cy.edges('[kind="hubEdge"]').remove();
     }
 
+    // show all hubs
     const hubNodes = cy.$('node[kind="hub"]');
     hubNodes.removeClass("hidden").style("display","element");
 
@@ -546,6 +530,7 @@
     cy.zoom(1);
     cy.center(hubNodes);
 
+    // ensure real nodes remain hidden on home
     applyFilters();
     cy.nodes('[kind="real"]').forEach(n => { n.addClass("hidden"); n.style("display","none"); });
     cy.edges('[kind="realEdge"]').forEach(e => { e.addClass("hidden"); e.style("display","none"); });
@@ -566,18 +551,14 @@
     cy.edges().addClass("hidden");
     cy.edges('[kind="hubEdge"]').remove();
 
+    // hide all hubs, show only selected
     cy.$('node[kind="hub"]').addClass("hidden").style("display","none");
     const hub = cy.getElementById(hubId);
     hub.removeClass("hidden").style("display","element");
 
     const center = hub.position();
-    const targetLabel = normalizeLabel(label);
 
-    const group = cy.nodes().filter(n =>
-      n.data("kind") === "real" &&
-      normalizeLabel(n.data("label")) === targetLabel
-    );
-
+    const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
     group.removeClass("hidden").style("display","element");
 
     const newEdges = [];
@@ -624,7 +605,7 @@
     const sorted = [...labels].sort((a,b)=>a.localeCompare(b));
     const box = document.getElementById("filters");
     box.innerHTML = sorted.map(l => {
-      const c = colorForLabel(l);
+      const c = COLORS[l] || "#A3A9FF";
       return `
         <label class="chk">
           <input type="checkbox" data-label="${l}" checked />
@@ -648,6 +629,7 @@
       const lbl = n.data("label") || "Other";
       const on = enabledLabels.get(lbl) !== false;
       n.toggleClass("filtered", !on);
+      // display controlled later by hidden/filtered + current screen state
       if (n.hasClass("hidden") || !on) n.style("display","none");
       else n.style("display","element");
     });
@@ -800,7 +782,7 @@
     const local = localSubgraphAround(centerNode, LOCAL_HOPS);
     cy.nodes('[kind="real"]').forEach(n => {
       if (n.style("display")==="none") return;
-      if (n.locked()) return;
+      if (n.locked()) return; // pinned stays pinned
       if (local.contains(n)) n.unlock();
       else n.lock();
     });
@@ -861,6 +843,7 @@
   }
 
   function expandRealNeighbors(node, opts={}) {
+    // hide hubs + hub edges while exploring
     cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
     cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
 
@@ -918,7 +901,7 @@
     expandState.set(node.id(), st);
 
     pushBreadcrumb(node);
-    showDetails(node);
+    showDetails(node); // keep details panel consistent & ordered
   }
 
   function collapseNeighborhood(node) {
@@ -957,6 +940,7 @@
   let lastTapId = null;
 
   function handleTap(ele, evt) {
+    // Shift+click: shortest path
     if (evt && evt.originalEvent && evt.originalEvent.shiftKey && ele.data("kind")==="real") {
       if (!pathA) {
         pathA = ele;
@@ -973,8 +957,8 @@
       pathA = ele;
       document.getElementById("pathsel").innerHTML =
         `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
-      return;
-    }
+        return;
+      }
 
     const now = Date.now();
     const id = ele.id();
@@ -1238,6 +1222,7 @@
       motionBlur: false
     });
 
+    // default: no accidental dragging
     setMoveMode(false);
 
     enableHoverFocus();
