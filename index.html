@@ -1,33 +1,1291 @@
-[
-  {
-    "n": {
-      "identity": 0,
-      "labels": [
-        "Partner"
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Graph Explorer</title>
+
+  <!-- Cytoscape core -->
+  <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+  <!-- Physics layout -->
+  <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+
+  <style>
+    html, body { width:100%; height:100%; margin:0; font-family: Arial, sans-serif; background:#070A12; }
+    #app { display:flex; width:100%; height:100%; }
+
+    #cy{
+      flex: 1;
+      height: 100%;
+      position: relative;
+      background: radial-gradient(circle at 30% 20%, #0b1230 0%, #070A12 45%, #050711 100%);
+      overflow: hidden;
+    }
+
+    #cy::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+      background:
+        radial-gradient(circle at 15% 25%, rgba(0,229,255,.10) 0%, transparent 52%),
+        radial-gradient(circle at 85% 30%, rgba(255,43,214,.09) 0%, transparent 52%),
+        radial-gradient(circle at 60% 85%, rgba(155,255,58,.08) 0%, transparent 55%),
+        radial-gradient(circle at 30% 80%, rgba(255,211,74,.06) 0%, transparent 58%),
+        radial-gradient(circle at 80% 75%, rgba(255,122,0,.06) 0%, transparent 58%);
+      filter: blur(2px);
+      animation: drift 12s ease-in-out infinite alternate;
+    }
+
+    /* ✅ Keep Cytoscape canvas layers aligned */
+    #cy canvas{
+      position:absolute !important;
+      inset:0 !important;
+      z-index:1;
+    }
+
+    @keyframes drift {
+      from { transform: translate3d(-5px,-3px,0) scale(1.01); }
+      to   { transform: translate3d(6px,5px,0) scale(1.03); }
+    }
+
+    #side{
+      width: 410px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      padding: 12px;
+      box-sizing: border-box;
+      overflow: auto;
+      background: linear-gradient(180deg, rgba(15,18,34,0.98), rgba(8,10,18,0.98));
+      color: #E9ECFF;
+    }
+
+    #toolbar{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 999;
+      background: rgba(10,12,22,0.85);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      backdrop-filter: blur(8px);
+      color: #E9ECFF;
+      max-width: 1280px;
+      flex-wrap: wrap;
+    }
+
+    .btn{
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: #E9ECFF;
+      padding: 7px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .btn:hover{ background: rgba(255,255,255,0.12); }
+
+    .btn.on{
+      background: rgba(0,229,255,0.14);
+      border-color: rgba(0,229,255,0.35);
+    }
+
+    #search{
+      width: 280px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: #E9ECFF;
+      outline: none;
+    }
+    #search::placeholder{ color: rgba(233,236,255,0.6); }
+
+    h3 { margin: 8px 0 10px; }
+    .muted { color: rgba(233,236,255,0.65); font-size: 12px; line-height: 1.4; }
+    .kv { margin: 10px 0; }
+    .k { font-size: 12px; color: rgba(233,236,255,0.65); }
+    .v { font-size: 13px; word-break: break-word; color: #E9ECFF; }
+    code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 6px; }
+    hr { border: 0; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0; }
+    a { color: #9fd3ff; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); font-size:12px; margin:2px 6px 2px 0; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .chk { display:flex; gap:8px; align-items:center; margin:6px 0; }
+    .swatch { width:10px; height:10px; border-radius:3px; display:inline-block; border:1px solid rgba(255,255,255,0.18); }
+    .smallbtn { padding:6px 8px; font-size:12px; border-radius:10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    .sectionTitle { font-weight:700; color:#E9ECFF; margin:6px 0; }
+    .bigTitle { font-weight:800; font-size:16px; margin:2px 0 6px; }
+    .descBox { padding:8px 10px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.10); }
+  </style>
+</head>
+
+<body>
+  <div id="toolbar">
+    <div style="font-weight:700;">⚡ Graph Explorer</div>
+
+    <div class="btn" id="btnHome">Home</div>
+    <div class="btn" id="btnCollapse">Collapse</div>
+    <div class="btn" id="btnShowAll">Show all</div>
+    <div class="btn" id="btnFit">Fit</div>
+
+    <div class="btn" id="btnMove">Move: OFF</div>
+    <div class="btn" id="btnClear">Clear highlights</div>
+
+    <input id="search" placeholder="Search (any property), press Enter" />
+
+    <div class="muted">Single click = details • Double click = expand • Shift+click 2 nodes = shortest path • Right click = pin/unpin</div>
+    <div class="muted" id="stats" style="margin-left:auto;"></div>
+  </div>
+
+  <div id="app">
+    <div id="cy"></div>
+    <div id="side">
+      <h3>Details</h3>
+      <div id="details" class="muted">Home shows hubs. Double click a hub to open that category.</div>
+
+      <hr />
+      <div class="sectionTitle">Controls</div>
+      <div class="muted">
+        • Move OFF = click/select without dragging<br>
+        • Right click node = pin/unpin<br>
+        • Double click node = expand neighbors<br>
+        • Shift+click two nodes = shortest path highlight
+      </div>
+
+      <hr />
+      <div class="sectionTitle">Filters</div>
+      <div id="filters"></div>
+
+      <hr />
+      <div class="sectionTitle">Breadcrumb</div>
+      <div id="crumbs" class="muted">—</div>
+
+      <hr />
+      <div class="sectionTitle">Path selection</div>
+      <div id="pathsel" class="muted">Shift+click two real nodes to highlight the shortest path.</div>
+
+      <hr />
+      <div id="debug" class="muted"></div>
+    </div>
+  </div>
+
+<script>
+  if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
+
+  // ----------------------------- Config -----------------------------
+  const COLORS = {
+    Material: "#00E5FF",
+    ValueChainStage: "#3DB4FF",
+    Partner: "#FF2BD6",
+    Deliverable: "#9BFF3A",
+    Demonstration: "#FFD34A",
+    Innovation: "#FF7A00",
+    KeyExploitableResult: "#7CFFB2",
+    Phase: "#A3A9FF",
+    CircularPath: "#B8BFFF",
+    Path: "#B8BFFF",
+    Other: "#A3A9FF"
+  };
+
+  const HUB_COLORS = {
+    Material: "#4CC9FF",
+    Partner: "#FF4DE1",
+    Deliverable: "#B4FF4A",
+    Demonstration: "#FFE06A",
+    Innovation: "#FF9A3C",
+    KeyExploitableResult: "#7CFFB2"
+  };
+
+  // ✅ ValueChainStage hub removed
+  const HUBS = [
+    { id: "HUB_MAT", label: "Material", title: "Materials" },
+    { id: "HUB_PARTNER", label: "Partner", title: "Partners" },
+    { id: "HUB_DELIV", label: "Deliverable", title: "Deliverables" },
+    { id: "HUB_DEMO", label: "Demonstration", title: "Demonstrations" },
+    { id: "HUB_INNO", label: "Innovation", title: "Innovations" },
+    { id: "HUB_KER", label: "KeyExploitableResult", title: "Key Exploitable Results" }
+  ];
+
+  const BATCH = 12;
+  const SEED_RADIUS = 110;
+  const SEED_JITTER = 28;
+  const LOCAL_HOPS = 2;
+  const EDGE_LABEL_ZOOM = 1.05;
+
+  let cy;
+  let runningLayout = null;
+
+  let moveMode = false;
+
+  const expandState = new Map();
+  const breadcrumb = [];
+
+  let pathA = null;
+  let pathB = null;
+
+  const enabledLabels = new Map();
+
+  // ----------------------------- Utils -----------------------------
+  function asNiceText(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function neoId(x) {
+    if (x == null) return null;
+    if (typeof x === "string" || typeof x === "number") return String(x);
+    if (x.elementId != null) return String(x.elementId);
+
+    const ident = x.identity ?? x.id;
+    if (ident != null) {
+      if (typeof ident === "string" || typeof ident === "number") return String(ident);
+      if (typeof ident === "object" && ident.low != null) return String(ident.low);
+    }
+
+    if (x.data && x.data.id != null) return String(x.data.id);
+    return null;
+  }
+
+  function getNumericIdentity(obj) {
+    if (!obj) return null;
+    const ident = obj.identity ?? obj.id;
+    if (ident == null) return null;
+    if (typeof ident === "number" || typeof ident === "string") return String(ident);
+    if (typeof ident === "object" && ident.low != null) return String(ident.low);
+    return null;
+  }
+
+  function renderValue(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.filter(Boolean).map(renderValue).join(" • ");
+    if (typeof v === "string") {
+      const s = v.trim();
+      const isUrl = /^https?:\/\/|^mailto:/i.test(s);
+      const isDoi = /^10\.\d{4,9}\//.test(s);
+      if (isUrl) return `<a href="${s}" target="_blank" rel="noopener noreferrer">${s}</a>`;
+      if (isDoi) return `<a href="https://doi.org/${s}" target="_blank" rel="noopener noreferrer">${s}</a>`;
+      return s;
+    }
+    if (typeof v === "object") return `<code>${JSON.stringify(v)}</code>`;
+    return String(v);
+  }
+
+  // --------- “name first, description second” for details panel ----------
+  function getBestName(d) {
+    // d.title is already a nice label computed for the node
+    return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
+  }
+
+  function getBestDescription(d) {
+    const p = d.properties || {};
+    const candidates = [
+      "description",
+      "innovations_description",
+      "innovation_description",
+      "deliverables_description",
+      "deliverable_description",
+      "demonstrations_description",
+      "demonstration_description",
+      "partners_description",
+      "partner_description",
+      "material_description",
+      "phase_description",
+      "notes",
+      "summary",
+      "abstract"
+    ];
+
+    for (const k of candidates) {
+      const v = p[k] ?? d[k];
+      const s = (typeof v === "string") ? v.trim() : "";
+      if (s) return { key: k, value: v };
+    }
+    return null;
+  }
+
+  function isIdKey(k) {
+    const kk = String(k).toLowerCase();
+    return (
+      kk === "id" ||
+      kk === "elementid" ||
+      kk.endsWith("_id") ||
+      kk.includes("identity") ||
+      kk === "neo4j_id"
+    );
+  }
+
+  // ----------------------------- Labels (for node title in graph) -----------------------------
+  function pickNodeLabel(d) {
+    const labels = d.labels || [];
+    const label = labels[0] || "Other";
+    const p = d.properties || {};
+
+    if (label === "Material") return asNiceText(p.material) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "ValueChainStage") {
+      const stage = asNiceText(p.name);
+      const mat = asNiceText(p.material);
+      return (stage && mat) ? `${stage} (${mat})` : (stage || mat || asNiceText(d.id));
+    }
+    if (label === "Partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(d.id);
+    if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
+    if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
+    if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
+    if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(p.title) || asNiceText(d.id);
+    if (label === "Phase") return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "CircularPath" || label === "Path") return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
+
+    return asNiceText(p.name) || asNiceText(d.id);
+  }
+
+  function sizeForLabel(label) {
+    if (label === "Material") return 24;
+    if (label === "ValueChainStage") return 23;
+    if (label === "Partner") return 24;
+    if (label === "Deliverable") return 22;
+    if (label === "Demonstration") return 21;
+    if (label === "Innovation") return 21;
+    if (label === "KeyExploitableResult") return 22;
+    if (label === "Phase") return 18;
+    if (label === "CircularPath" || label === "Path") return 20;
+    return 16;
+  }
+  function colorForLabel(label) { return COLORS[label] || COLORS.Other; }
+
+  // ----------------------------- Details -----------------------------
+  function showDetails(ele) {
+    const d = ele.data();
+
+    const name = getBestName(d);
+    const type = d.kind === "hub" ? "Hub" : (d.label || "Node");
+
+    const head = `
+      <div class="bigTitle">${name}</div>
+      <div class="muted">Type: <code>${type}</code></div>
+    `;
+
+    if (d.kind === "hub") {
+      document.getElementById("details").innerHTML = head + `
+        <hr />
+        <div class="muted">Double click to reveal nodes in this category.</div>`;
+      return;
+    }
+
+    // Description first (if exists)
+    const desc = getBestDescription(d);
+    const descHtml = desc ? `
+      <hr />
+      <div class="sectionTitle">Description</div>
+      <div class="descBox">${renderValue(desc.value)}</div>
+    ` : "";
+
+    // Build “Properties” list with priority:
+    // 1) Name-related keys
+    // 2) Description key removed (since we show it above)
+    // 3) Everything else (alphabetical)
+    const props = d.properties || {};
+
+    const nameKeys = [
+      "name","title",
+      "innovations_name","innovations",
+      "deliverables_name","deliverables_no",
+      "demonstrations","demonstrations_type",
+      "partners","partners_legalname",
+      "material","phase_id","phases","phase_path"
+    ];
+
+    const skipKeys = new Set([
+      "color","title","kind","_placed","size","labels","label"
+    ]);
+
+    const descKey = desc?.key;
+
+    function includeKey(k) {
+      if (skipKeys.has(k)) return false;
+      if (descKey && k === descKey) return false;
+      if (isIdKey(k)) return false;
+      return true;
+    }
+
+    // priority list from properties
+    const priority = [];
+    for (const k of nameKeys) if (k in props && includeKey(k)) priority.push(k);
+
+    // then rest
+    const rest = Object.keys(props)
+      .filter(k => includeKey(k) && !priority.includes(k))
+      .sort((a,b)=>a.localeCompare(b));
+
+    const rows = [...priority, ...rest]
+      .map(k => `<div class="kv"><div class="k">${k}</div><div class="v">${renderValue(props[k])}</div></div>`)
+      .join("");
+
+    // Actions
+    const actions = `
+      <hr />
+      <div class="row">
+        <div class="btn smallbtn" id="btnExpandMore">Expand +${BATCH}</div>
+        <div class="btn smallbtn" id="btnCollapseNode">Collapse neighbors</div>
+        <div class="btn smallbtn" id="btnPin">${ele.locked() ? "Unpin" : "Pin"}</div>
+        <div class="btn smallbtn" id="btnCenter">Center</div>
+      </div>
+    `;
+
+    document.getElementById("details").innerHTML =
+      head +
+      descHtml +
+      `<hr /><div class="sectionTitle">Properties</div>` +
+      (rows || `<div class="muted">No properties</div>`) +
+      actions;
+
+    // wire actions
+    document.getElementById("btnExpandMore").onclick = () => expandRealNeighbors(ele, { forceMore:true });
+    document.getElementById("btnCollapseNode").onclick = () => collapseNeighborhood(ele);
+    document.getElementById("btnPin").onclick = () => {
+      ele.lock(!ele.locked());
+      document.getElementById("btnPin").textContent = ele.locked() ? "Unpin" : "Pin";
+    };
+    document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
+  }
+
+  // ----------------------------- Hover focus -----------------------------
+  function enableHoverFocus() {
+    cy.on("mouseover", "node", (evt) => {
+      const n = evt.target;
+      cy.elements().addClass("dim");
+      n.closedNeighborhood().removeClass("dim").addClass("hi");
+      cy.edges().removeClass("edgeLabelOn");
+      n.closedNeighborhood().edges().addClass("edgeLabelOn");
+    });
+    cy.on("mouseout", "node", () => {
+      cy.elements().removeClass("dim hi");
+      cy.edges().removeClass("edgeLabelOn");
+    });
+  }
+
+  // ----------------------------- Move mode -----------------------------
+  function setMoveMode(on){
+    moveMode = on;
+    cy.nodes().forEach(n => n.grabbable(on));
+    const b = document.getElementById("btnMove");
+    b.textContent = `Move: ${on ? "ON" : "OFF"}`;
+    b.classList.toggle("on", on);
+  }
+
+  // ----------------------------- Hub helpers -----------------------------
+  function hubIdFor(label) {
+    const L = (label || "").toLowerCase();
+    if (L === "material") return "HUB_MAT";
+    if (L === "partner") return "HUB_PARTNER";
+    if (L === "deliverable") return "HUB_DELIV";
+    if (L === "demonstration") return "HUB_DEMO";
+    if (L === "innovation") return "HUB_INNO";
+    if (L === "keyexploitableresult") return "HUB_KER";
+    return null;
+  }
+
+  function stopLayout() {
+    try { if (runningLayout) runningLayout.stop(); } catch(e) {}
+    runningLayout = null;
+  }
+
+  // ✅ FIX: Home must show ALL hubs again (and undo any display:none)
+  function homeView(force=true) {
+    stopLayout();
+    cy.nodes().unlock();
+    clearHighlights({ keepBreadcrumb:false });
+
+    // Reset display styles (important!)
+    cy.nodes().style("display","element");
+    cy.edges().style("display","element");
+
+    if (force) {
+      cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
+      cy.edges().addClass("hidden");
+      cy.edges('[kind="hubEdge"]').remove();
+    }
+
+    // show all hubs
+    const hubNodes = cy.$('node[kind="hub"]');
+    hubNodes.removeClass("hidden").style("display","element");
+
+    const w = cy.width(), h = cy.height();
+    const cx = w * 0.47;
+    const cyy = h * 0.55;
+    const R = Math.min(w,h) * 0.28;
+
+    const hubs = HUBS.map(h => cy.getElementById(h.id));
+    hubs.forEach((node, i) => {
+      const a = (-Math.PI/2) + (2*Math.PI*i)/hubs.length;
+      node.position({ x: cx + R*Math.cos(a), y: cyy + R*Math.sin(a) });
+    });
+
+    cy.zoom(1);
+    cy.center(hubNodes);
+
+    // ensure real nodes remain hidden on home
+    applyFilters();
+    cy.nodes('[kind="real"]').forEach(n => { n.addClass("hidden"); n.style("display","none"); });
+    cy.edges('[kind="realEdge"]').forEach(e => { e.addClass("hidden"); e.style("display","none"); });
+
+    document.getElementById("details").innerHTML =
+      `<div class="muted">Home loaded. Double click a hub to open that category.</div>`;
+  }
+
+  function revealCategory(label) {
+    const hubId = hubIdFor(label);
+    if (!hubId) return;
+
+    stopLayout();
+    cy.nodes().unlock();
+    clearHighlights({ keepBreadcrumb:false });
+
+    cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
+    cy.edges().addClass("hidden");
+    cy.edges('[kind="hubEdge"]').remove();
+
+    // hide all hubs, show only selected
+    cy.$('node[kind="hub"]').addClass("hidden").style("display","none");
+    const hub = cy.getElementById(hubId);
+    hub.removeClass("hidden").style("display","element");
+
+    const center = hub.position();
+
+    const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
+    group.removeClass("hidden").style("display","element");
+
+    const newEdges = [];
+    group.forEach(n => {
+      newEdges.push({
+        group: "edges",
+        data: { id: `HE_${hubId}_${n.id()}`, source: hubId, target: n.id(), label: "", kind: "hubEdge" }
+      });
+    });
+    if (newEdges.length) cy.add(newEdges);
+    cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
+
+    const nodes = group.toArray();
+    const startAngle = -Math.PI / 2;
+    const perRing = 18;
+    const baseR   = 260;
+    const ringGap = 95;
+
+    nodes.forEach((n, i) => {
+      const ring = Math.floor(i / perRing);
+      const idx  = i % perRing;
+      const ringCount = Math.min(perRing, nodes.length - ring * perRing);
+      const radius = baseR + ring * ringGap;
+      const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
+
+      n.position({ x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a) });
+      n.data("_placed", true);
+      expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
+    });
+
+    applyFilters();
+    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 60);
+
+    document.getElementById("details").innerHTML =
+      `<div class="muted"><b>${label}</b> opened. Double click any node to expand.</div>`;
+  }
+
+  // ----------------------------- Filters -----------------------------
+  function buildFiltersFromGraph() {
+    const labels = new Set();
+    cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
+    labels.forEach(l => enabledLabels.set(l, true));
+
+    const sorted = [...labels].sort((a,b)=>a.localeCompare(b));
+    const box = document.getElementById("filters");
+    box.innerHTML = sorted.map(l => {
+      const c = COLORS[l] || "#A3A9FF";
+      return `
+        <label class="chk">
+          <input type="checkbox" data-label="${l}" checked />
+          <span class="swatch" style="background:${c}"></span>
+          <span>${l}</span>
+        </label>
+      `;
+    }).join("");
+
+    box.querySelectorAll('input[type="checkbox"]').forEach(chk => {
+      chk.addEventListener("change", (e) => {
+        const lbl = e.target.getAttribute("data-label");
+        enabledLabels.set(lbl, e.target.checked);
+        applyFilters();
+      });
+    });
+  }
+
+  function applyFilters() {
+    cy.nodes('[kind="real"]').forEach(n => {
+      const lbl = n.data("label") || "Other";
+      const on = enabledLabels.get(lbl) !== false;
+      n.toggleClass("filtered", !on);
+      // display controlled later by hidden/filtered + current screen state
+      if (n.hasClass("hidden") || !on) n.style("display","none");
+      else n.style("display","element");
+    });
+
+    cy.edges('[kind="realEdge"]').forEach(e => {
+      const s = e.source(), t = e.target();
+      const endpointsVisible = (s.style("display") !== "none") && (t.style("display") !== "none");
+      if (e.hasClass("hidden") || !endpointsVisible) e.style("display","none");
+      else e.style("display","element");
+    });
+
+    cy.edges('[kind="hubEdge"]').forEach(e => {
+      const s = e.source(), t = e.target();
+      const endpointsVisible = (s.style("display") !== "none") && (t.style("display") !== "none");
+      if (e.hasClass("hidden") || !endpointsVisible) e.style("display","none");
+      else e.style("display","element");
+    });
+  }
+
+  // ----------------------------- Breadcrumb + path highlighting -----------------------------
+  function pushBreadcrumb(node) {
+    const id = node.id();
+    if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
+
+    const crumbs = document.getElementById("crumbs");
+    const items = breadcrumb.slice(-14).map(nid => {
+      const n = cy.getElementById(nid);
+      const title = (n && n.length) ? (n.data("title") || nid) : nid;
+      return `<span class="pill mono" data-nid="${nid}" style="cursor:pointer;">${title}</span>`;
+    }).join("");
+
+    crumbs.innerHTML = items || "—";
+    crumbs.querySelectorAll("[data-nid]").forEach(el => {
+      el.onclick = () => {
+        const nid = el.getAttribute("data-nid");
+        const n = cy.getElementById(nid);
+        if (n && n.length) cy.animate({ center:{ eles: n } }, { duration: 200 });
+      };
+    });
+
+    cy.elements().removeClass("crumbPath crumbPathNode");
+    const chain = breadcrumb.slice(-10);
+    for (let i=0; i<chain.length-1; i++){
+      const a = cy.getElementById(chain[i]);
+      const b = cy.getElementById(chain[i+1]);
+      if (!a.length || !b.length) continue;
+      const e = a.edgesTo(b).union(b.edgesTo(a)).filter(x => x.data("kind")==="realEdge");
+      e.addClass("crumbPath");
+      a.addClass("crumbPathNode");
+      b.addClass("crumbPathNode");
+    }
+  }
+
+  function clearPathSelectionUI() {
+    pathA = null; pathB = null;
+    document.getElementById("pathsel").innerHTML = `Shift+click two real nodes to highlight the shortest path.`;
+  }
+
+  function bfsShortestPath(startId, goalId) {
+    if (startId === goalId) return { nodes:[startId], edges:[] };
+
+    const q = [startId];
+    const prev = new Map();
+    prev.set(startId, null);
+
+    while (q.length) {
+      const cur = q.shift();
+      const curNode = cy.getElementById(cur);
+      if (!curNode.length) continue;
+
+      const edges = curNode.connectedEdges().filter(e =>
+        e.data("kind")==="realEdge" &&
+        e.style("display") !== "none"
+      );
+
+      for (let i=0; i<edges.length; i++){
+        const e = edges[i];
+        const n = (e.source().id() === cur) ? e.target().id() : e.source().id();
+        const nn = cy.getElementById(n);
+        if (!nn.length) continue;
+        if (nn.style("display")==="none") continue;
+
+        if (!prev.has(n)) {
+          prev.set(n, { node: cur, edgeId: e.id() });
+          if (n === goalId) {
+            const nodes = [goalId];
+            const edgesPath = [];
+            let x = goalId;
+            while (prev.get(x) !== null) {
+              const p = prev.get(x);
+              edgesPath.push(p.edgeId);
+              nodes.push(p.node);
+              x = p.node;
+            }
+            nodes.reverse();
+            edgesPath.reverse();
+            return { nodes, edges: edgesPath };
+          }
+          q.push(n);
+        }
+      }
+    }
+    return null;
+  }
+
+  function highlightShortestPath(a, b) {
+    cy.elements().removeClass("spath spathNode");
+    const res = bfsShortestPath(a.id(), b.id());
+    if (!res) {
+      document.getElementById("pathsel").innerHTML =
+        `<span class="muted">No path found between the selected nodes in the currently visible graph.</span>`;
+      return;
+    }
+
+    res.nodes.forEach(id => cy.getElementById(id).addClass("spathNode"));
+    res.edges.forEach(id => cy.getElementById(id).addClass("spath"));
+
+    document.getElementById("pathsel").innerHTML =
+      `<div class="muted">
+        Shortest path length: <b>${Math.max(0, res.nodes.length-1)}</b><br>
+        A: <span class="mono">${a.data("title")||"Node"}</span><br>
+        B: <span class="mono">${b.data("title")||"Node"}</span>
+      </div>`;
+
+    const eles = cy.collection(res.nodes.map(id => cy.getElementById(id)))
+      .union(cy.collection(res.edges.map(id => cy.getElementById(id))));
+    if (eles.length) cy.fit(eles, 70);
+  }
+
+  function clearHighlights({ keepBreadcrumb=true } = {}) {
+    stopLayout();
+    cy.elements().removeClass("spath spathNode crumbPath crumbPathNode");
+    clearPathSelectionUI();
+    if (!keepBreadcrumb) {
+      breadcrumb.length = 0;
+      document.getElementById("crumbs").innerHTML = "—";
+    }
+  }
+
+  // ----------------------------- Local physics -----------------------------
+  function localSubgraphAround(node, hops=2) {
+    let s = node;
+    for (let i=0; i<hops; i++) s = s.closedNeighborhood();
+    const nodes = s.nodes().filter(n => n.data("kind")==="real" && n.style("display") !== "none");
+    const edges = s.edges().filter(e => e.data("kind")==="realEdge" && e.style("display") !== "none");
+    return nodes.union(edges);
+  }
+
+  function lockOutsideLocal(centerNode) {
+    const local = localSubgraphAround(centerNode, LOCAL_HOPS);
+    cy.nodes('[kind="real"]').forEach(n => {
+      if (n.style("display")==="none") return;
+      if (n.locked()) return; // pinned stays pinned
+      if (local.contains(n)) n.unlock();
+      else n.lock();
+    });
+  }
+
+  function runLocalPhysics(centerNode) {
+    stopLayout();
+    const eles = localSubgraphAround(centerNode, LOCAL_HOPS);
+    if (eles.length < 2) return;
+
+    runningLayout = cy.layout({
+      name: "fcose",
+      eles,
+      animate: true,
+      animationDuration: 420,
+      fit: false,
+      padding: 40,
+      quality: "default",
+      randomize: false,
+      nodeRepulsion: 9000,
+      idealEdgeLength: 130,
+      edgeElasticity: 0.45,
+      gravity: 0.28,
+      nodeDimensionsIncludeLabels: true,
+      packComponents: true,
+      fixedNodeConstraint: [{
+        nodeId: centerNode.id(),
+        position: centerNode.position()
+      }]
+    });
+
+    runningLayout.run();
+  }
+
+  // ----------------------------- Expand / Collapse -----------------------------
+  function getOrderedNeighbors(node) {
+    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
+    neigh.sort((a,b) => {
+      const la = (a.data("label")||"").localeCompare(b.data("label")||"");
+      if (la) return la;
+      return (a.data("title")||a.id()).localeCompare(b.data("title")||b.id());
+    });
+    return neigh.map(n => n.id());
+  }
+
+  function seedNewNodesAround(centerNode, newNodes) {
+    const c = centerNode.position();
+    newNodes.forEach((n, i) => {
+      if (n.data("_placed")) return;
+      const angle = -Math.PI/2 + (2*Math.PI*i)/Math.max(newNodes.length, 1);
+      n.position({
+        x: c.x + Math.cos(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER,
+        y: c.y + Math.sin(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER
+      });
+      n.data("_placed", true);
+    });
+  }
+
+  function expandRealNeighbors(node, opts={}) {
+    // hide hubs + hub edges while exploring
+    cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
+    cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
+
+    node.removeClass("hidden").style("display","element");
+
+    let st = expandState.get(node.id());
+    if (!st) st = { shownCount: 0, orderedNeighbors: null };
+    if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
+
+    const start = st.shownCount;
+    const end = Math.min(st.orderedNeighbors.length, start + BATCH);
+
+    const toShowIds = st.orderedNeighbors.slice(0, end);
+    const newlyShown = [];
+
+    toShowIds.forEach(id => {
+      const n = cy.getElementById(id);
+      if (!n.length) return;
+
+      const lbl = n.data("label") || "Other";
+      const on = enabledLabels.get(lbl) !== false;
+
+      const wasHidden = (n.style("display")==="none");
+      n.removeClass("hidden");
+      n.toggleClass("filtered", !on);
+      n.style("display", on ? "element" : "none");
+
+      if (wasHidden && on) newlyShown.push(n);
+    });
+
+    const visibleIds = new Set(toShowIds);
+    visibleIds.add(node.id());
+
+    const allEdges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    allEdges.forEach(e => {
+      const s = e.source().id();
+      const t = e.target().id();
+      const ok = visibleIds.has(s) && visibleIds.has(t);
+
+      e.toggleClass("hidden", !ok);
+      if (!ok) e.style("display","none");
+      else {
+        const sv = e.source().style("display") !== "none";
+        const tv = e.target().style("display") !== "none";
+        e.style("display", (sv && tv) ? "element" : "none");
+      }
+    });
+
+    seedNewNodesAround(node, newlyShown);
+
+    lockOutsideLocal(node);
+    runLocalPhysics(node);
+
+    st.shownCount = end;
+    expandState.set(node.id(), st);
+
+    pushBreadcrumb(node);
+    showDetails(node); // keep details panel consistent & ordered
+  }
+
+  function collapseNeighborhood(node) {
+    stopLayout();
+
+    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    edges.forEach(e => { e.addClass("hidden"); e.style("display","none"); });
+
+    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
+    neigh.forEach(n => {
+      const stillHasVisible = n.connectedEdges().filter(e => e.data("kind")==="realEdge" && e.style("display")!=="none").length > 0;
+      if (!stillHasVisible && !n.locked()) {
+        n.addClass("hidden");
+        n.style("display","none");
+      }
+    });
+
+    const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
+    st.shownCount = 0;
+    expandState.set(node.id(), st);
+
+    cy.nodes('[kind="real"]').forEach(n => { if (!n.locked()) n.unlock(); });
+
+    showDetails(node);
+  }
+
+  // ----------------------------- Edge label visibility -----------------------------
+  function updateEdgeLabelVisibility() {
+    const z = cy.zoom();
+    if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
+    else cy.edges().removeClass("show-edge-labels");
+  }
+
+  // ----------------------------- Click handling -----------------------------
+  let lastTapTime = 0;
+  let lastTapId = null;
+
+  function handleTap(ele, evt) {
+    // Shift+click: shortest path
+    if (evt && evt.originalEvent && evt.originalEvent.shiftKey && ele.data("kind")==="real") {
+      if (!pathA) {
+        pathA = ele;
+        document.getElementById("pathsel").innerHTML =
+          `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
+        return;
+      }
+      if (!pathB) {
+        pathB = ele;
+        highlightShortestPath(pathA, pathB);
+        return;
+      }
+      clearHighlights({ keepBreadcrumb:true });
+      pathA = ele;
+      document.getElementById("pathsel").innerHTML =
+        `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
+      return;
+    }
+
+    const now = Date.now();
+    const id = ele.id();
+    const isDouble = (lastTapId === id && (now - lastTapTime) < 350);
+    lastTapTime = now;
+    lastTapId = id;
+
+    if (!isDouble) { showDetails(ele); return; }
+
+    const d = ele.data();
+    if (d.kind === "hub") revealCategory(d.label);
+    else expandRealNeighbors(ele);
+  }
+
+  function enablePinOnRightClick() {
+    cy.on("cxttap", "node[kind='real']", (evt) => {
+      const n = evt.target;
+      n.lock(!n.locked());
+      showDetails(n);
+    });
+  }
+
+  // ----------------------------- JSON parsing -----------------------------
+  function rowsNrmToElements(rows) {
+    const nodeMap = new Map();
+    const idMap = new Map();
+    const edgeMap = new Map();
+
+    function addNode(nodeObj) {
+      if (!nodeObj) return null;
+      const cid = neoId(nodeObj);
+      if (!cid) return null;
+
+      if (!nodeMap.has(cid)) {
+        const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
+        const properties = nodeObj.properties || {};
+        nodeMap.set(cid, { data: { id: cid, labels, properties } });
+
+        const numId = getNumericIdentity(nodeObj);
+        if (numId) idMap.set(numId, cid);
+      }
+      return cid;
+    }
+
+    function resolveEndpoint(x) {
+      if (x == null) return null;
+      if (typeof x === "string") return nodeMap.has(x) ? x : (idMap.get(x) || x);
+      if (typeof x === "number") return idMap.get(String(x)) || String(x);
+
+      const cid = neoId(x);
+      if (cid && nodeMap.has(cid)) return cid;
+
+      const num = getNumericIdentity(x);
+      if (num && idMap.has(num)) return idMap.get(num);
+
+      if (x.low != null && idMap.has(String(x.low))) return idMap.get(String(x.low));
+      return null;
+    }
+
+    function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
+      if (!relObj) return;
+
+      const rid = neoId(relObj) || `rel_${edgeMap.size}`;
+      const type = relObj.type || relObj.label || relObj.relType || "REL";
+
+      // ✅ fixed: prefer exact element ids from Neo4j JSON
+      const rawS = relObj.startNodeElementId ?? relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from ?? relObj.start_id ?? relObj.startId;
+      const rawT = relObj.endNodeElementId   ?? relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to   ?? relObj.end_id   ?? relObj.endId;
+
+      const source = resolveEndpoint(rawS) || fallbackSourceId;
+      const target = resolveEndpoint(rawT) || fallbackTargetId;
+
+      if (!source || !target) return;
+
+      const key = `${rid}|${source}|${target}|${type}`;
+      if (edgeMap.has(key)) return;
+
+      const props = relObj.properties || {};
+      edgeMap.set(key, { data: { id: rid, source, target, type, properties: props } });
+    }
+
+    rows.forEach(row => {
+      const n = row.n || row.from || row.a || row.sourceNode;
+      const m = row.m || row.to   || row.b || row.targetNode;
+      const r = row.r || row.rel  || row.e || row.relationship;
+
+      const nId = addNode(n);
+      const mId = addNode(m);
+
+      Object.values(row).forEach(v => {
+        if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
+      });
+
+      addEdge(r, nId, mId);
+    });
+
+    return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
+  }
+
+  function unwrapAnyNeo4jJson(raw) {
+    if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
+    if (raw?.elements?.nodes && (raw.elements.edges || raw.elements.relationships)) return raw.elements;
+    if (raw?.nodes && (raw?.relationships || raw?.edges)) return { nodes: raw.nodes, edges: raw.relationships || raw.edges };
+    if (Array.isArray(raw) && raw.length && typeof raw[0] === "object") {
+      const el = rowsNrmToElements(raw);
+      return { nodes: el.nodes, edges: el.edges };
+    }
+    return null;
+  }
+
+  // ----------------------------- Main -----------------------------
+  async function main() {
+    const res = await fetch("./graph.json", { cache: "no-store" });
+    if (!res.ok) {
+      document.getElementById("details").innerHTML =
+        `<b>Error</b><br><br>Could not load <code>graph.json</code> (${res.status}). Put it next to <code>index.html</code> in the repo root.`;
+      return;
+    }
+
+    const raw = await res.json();
+    const elements = unwrapAnyNeo4jJson(raw);
+    const edgeList = elements?.edges || elements?.relationships;
+
+    if (!elements?.nodes || !edgeList) {
+      document.getElementById("details").innerHTML =
+        "<b>Error</b><br><br>graph.json format not recognized. It must contain nodes + relationships OR rows like n/r/m.";
+      return;
+    }
+
+    const realNodes = elements.nodes.map(n => {
+      const d = n.data || n;
+      const labels = d.labels || (d.data?.labels) || [];
+      const properties = d.properties || (d.data?.properties) || {};
+      const id = d.id || d.elementId || (d.data && d.data.id) || neoId(d);
+
+      const nodeData = { id: String(id), labels, properties };
+      const label = (labels && labels[0]) || "Other";
+
+      return {
+        data: {
+          ...nodeData,
+          label,
+          title: pickNodeLabel(nodeData),
+          color: colorForLabel(label),
+          size: sizeForLabel(label),
+          kind: "real"
+        }
+      };
+    });
+
+    const nodeIdSet = new Set(realNodes.map(n => n.data.id));
+
+    const realEdges = edgeList.map(e => {
+      const d = e.data || e;
+
+      // ✅ fixed: prefer exact element ids from Neo4j JSON
+      const source = d.source || d.startNodeElementId || d.startNode || d.start || d.from || d.start_id || d.startId;
+      const target = d.target || d.endNodeElementId || d.endNode || d.end || d.to || d.end_id || d.endId;
+
+      const s = (typeof source === "object") ? neoId(source) : String(source ?? "");
+      const t = (typeof target === "object") ? neoId(target) : String(target ?? "");
+
+      const id = d.id || d.elementId || neoId(d) || `edge_${Math.random().toString(36).slice(2)}`;
+      const type = d.type || d.label || d.relType || "REL";
+      const props = d.properties || {};
+
+      return { data: { id: String(id), source: s, target: t, label: type, type, properties: props, kind:"realEdge" } };
+    }).filter(e => e.data.source && e.data.target);
+
+    const broken = realEdges.filter(e => !nodeIdSet.has(e.data.source) || !nodeIdSet.has(e.data.target));
+    const goodEdges = realEdges.filter(e => nodeIdSet.has(e.data.source) && nodeIdSet.has(e.data.target));
+
+    document.getElementById("debug").innerHTML =
+      `<div class="pill">Loaded nodes: <b>${realNodes.length}</b></div>
+       <div class="pill">Edges in file: <b>${realEdges.length}</b></div>
+       <div class="pill">Drawable edges: <b>${goodEdges.length}</b></div>
+       ${broken.length ? `<div style="margin-top:8px;" class="muted">⚠️ <b>${broken.length}</b> edges reference missing node ids (id mismatch).</div>` : ""}`;
+
+    document.getElementById("stats").innerHTML =
+      `Nodes: <b>${realNodes.length}</b> • Edges: <b>${goodEdges.length}</b>`;
+
+    const hubNodes = HUBS.map(h => ({
+      data: { id:h.id, label:h.label, title:h.title, color:HUB_COLORS[h.label] || "#B8BFFF", size:125, kind:"hub" }
+    }));
+
+    cy = cytoscape({
+      container: document.getElementById("cy"),
+      elements: { nodes: [...hubNodes, ...realNodes], edges: goodEdges },
+      style: [
+        { selector: ".hidden", style: { "display": "none" } },
+        { selector: ".dim", style: { "opacity": 0.10 } },
+        { selector: ".hi", style: { "opacity": 1, "shadow-blur": 30, "shadow-opacity": 0.7, "shadow-color": "#ffffff" } },
+
+        { selector: ".crumbPathNode", style: { "border-width": 4, "border-color":"rgba(255,255,255,0.55)" } },
+        { selector: "edge.crumbPath", style: { "width": 3, "line-color":"rgba(255,255,255,0.35)", "target-arrow-color":"rgba(255,255,255,0.45)" } },
+
+        { selector: ".spathNode", style: { "border-width": 4, "border-color":"rgba(0,229,255,0.65)" } },
+        { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
+
+        {
+          selector: 'node[kind="real"]',
+          style: {
+            "background-color":"data(color)",
+            "width":"data(size)","height":"data(size)",
+            "border-width":2,"border-color":"rgba(255,255,255,0.18)",
+            "label":"data(title)","color":"#E9ECFF","font-size":12,
+            "text-wrap":"wrap","text-max-width":120,
+            "text-outline-width":4,"text-outline-color":"#000",
+            "shadow-blur":16,"shadow-color":"data(color)","shadow-opacity":0.30
+          }
+        },
+        {
+          selector:'node[kind="hub"]',
+          style:{
+            "width":125,"height":125,
+            "border-width":5,"border-color":"rgba(233,236,255,0.35)",
+            "background-color":"data(color)","background-opacity":0.88,
+            "label":"data(title)","color":"#FFF","font-size":18,"font-weight":"bold",
+            "text-outline-width":5,"text-outline-color":"#000",
+            "shadow-blur":30,"shadow-color":"data(color)","shadow-opacity":0.60
+          }
+        },
+
+        {
+          selector:"edge",
+          style:{
+            "curve-style":"unbundled-bezier",
+            "control-point-distances":46,
+            "control-point-weights":0.5,
+            "line-color":"rgba(200,220,255,0.22)",
+            "width":2,
+            "target-arrow-shape":"triangle",
+            "target-arrow-color":"rgba(200,220,255,0.40)",
+            "label":"",
+            "font-size":10,
+            "color":"rgba(255,255,255,0.92)",
+            "text-outline-width":4,
+            "text-outline-color":"#000",
+            "text-background-opacity":0.70,
+            "text-background-color":"rgba(0,0,0,0.72)",
+            "text-background-padding":"2px",
+            "text-rotation":"autorotate"
+          }
+        },
+        { selector: "edge.show-edge-labels", style: { "label":"data(label)" } },
+        { selector: "edge.edgeLabelOn", style: { "label":"data(label)" } },
+
+        {
+          selector:'edge[kind="hubEdge"]',
+          style:{
+            "curve-style":"unbundled-bezier",
+            "control-point-distances":32,
+            "control-point-weights":0.5,
+            "line-color":"rgba(233,236,255,0.22)",
+            "target-arrow-color":"rgba(233,236,255,0.28)",
+            "width":2,
+            "label":""
+          }
+        }
       ],
-      "properties": {
-        "partners_location": "NL",
-        "partners_description": "A Dutch consultancy and software firm specializing in BIM, real-estate digitalization, inspection, and sustainability research",
-        "partners": "DEMO",
-        "partners_website": "https://www.demobv.nl/en",
-        "partners_legalname": "DEMO CONSULTANTS BV"
-      },
-      "elementId": "4:5f54efb6-163a-48d9-be55-7d4ce9715cd2:0"
-    },
-    "r": {
-      "identity": 1152921504606846976,
-      "start": 0,
-      "end": 16,
-      "type": "OWNS_INNOVATION",
-      "properties": {},
-      "elementId": "5:5f54efb6-163a-48d9-be55-7d4ce9715cd2:1152921504606846976",
-      "startNodeElementId": "4:5f54efb6-163a-48d9-be55-7d4ce9715cd2:0",
-      "endNodeElementId": "4:5f54efb6-163a-48d9-be55-7d4ce9715cd2:16"
-    },
-    "m": {
-      "identity": 16,
-      "labels": [
-        "Innovation"
-      ],
-      "properties": {
-        "linkdin_post": "https://www.linkedin.
+      wheelSensitivity: 0.15,
+      hideEdgesOnViewport: false,
+      textureOnViewport: false,
+      motionBlur: false
+    });
+
+    // default: no accidental dragging
+    setMoveMode(false);
+
+    enableHoverFocus();
+    enablePinOnRightClick();
+
+    cy.on("tap","node",(evt)=>handleTap(evt.target, evt));
+    cy.on("zoom", updateEdgeLabelVisibility);
+    updateEdgeLabelVisibility();
+
+    document.getElementById("btnHome").onclick = () => homeView(true);
+    document.getElementById("btnCollapse").onclick = () => homeView(true);
+    document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
+
+    document.getElementById("btnShowAll").onclick = () => {
+      stopLayout();
+      cy.nodes().unlock();
+
+      cy.nodes().removeClass("hidden filtered");
+      cy.edges().removeClass("hidden");
+      cy.nodes().style("display","element");
+      cy.edges().style("display","element");
+
+      document.getElementById("details").innerHTML =
+        `<div class="muted">All nodes shown. Use filters to reduce clutter.</div>`;
+      updateEdgeLabelVisibility();
+    };
+
+    document.getElementById("btnMove").onclick = () => setMoveMode(!moveMode);
+    document.getElementById("btnClear").onclick = () => clearHighlights({ keepBreadcrumb:true });
+
+    document.getElementById("search").addEventListener("keydown",(e)=>{
+      if (e.key !== "Enter") return;
+      const q = e.target.value.trim().toLowerCase();
+      if (!q) return;
+
+      const hit = cy.nodes().filter(n=>{
+        const d=n.data();
+        if (d.kind!=="real") return false;
+        const vals = Object.values(d.properties || {});
+        return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
+               asNiceText(d.title).toLowerCase().includes(q);
+      }).first();
+
+      if (hit && hit.length) {
+        hit.removeClass("hidden").removeClass("filtered").style("display","element");
+        showDetails(hit);
+        cy.animate({ center:{ eles: hit } }, { duration: 200 });
+      }
+    });
+
+    buildFiltersFromGraph();
+    cy.nodes('[kind="real"]').forEach(n => expandState.set(n.id(), { shownCount:0, orderedNeighbors:null }));
+
+    homeView(true);
+  }
+
+  main().catch(err => {
+    console.error(err);
+    document.getElementById("details").innerHTML = "<b>Error</b><br><br>" + String(err);
+  });
+</script>
+</body>
+</html>
