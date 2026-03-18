@@ -155,7 +155,7 @@
         • Move OFF = click/select without dragging<br>
         • Right click node = pin/unpin<br>
         • Double click node = expand neighbors<br>
-        • Shift+click two nodes = shortest path highlight
+        • Shift+click two real nodes = shortest path highlight
       </div>
 
       <hr />
@@ -338,7 +338,7 @@
     if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
     if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
     if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
-    if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(p.title) || asNiceText(d.id);
+    if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(d.id);
     if (label === "Phase") return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "CircularPath" || label === "Path") return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
 
@@ -352,7 +352,7 @@
     if (label === "Deliverable") return 22;
     if (label === "Demonstration") return 21;
     if (label === "Innovation") return 21;
-    if (label === "KeyExploitableResult") return 22;
+    if (label === "KeyExploitableResult") return 21;
     if (label === "Phase") return 18;
     if (label === "CircularPath" || label === "Path") return 20;
     return 16;
@@ -487,7 +487,7 @@
     if (L === "deliverable") return "HUB_DELIV";
     if (L === "demonstration") return "HUB_DEMO";
     if (L === "innovation") return "HUB_INNO";
-    if (L === "keyexploitableresult") return "HUB_KER";
+    if (L === "keyexploitatableresult") return "HUB_KER";
     return null;
   }
 
@@ -1024,9 +1024,8 @@
       const rid = neoId(relObj) || `rel_${edgeMap.size}`;
       const type = relObj.type || relObj.label || relObj.relType || "REL";
 
-      // ✅ fixed: prefer exact element ids from Neo4j JSON
-      const rawS = relObj.startNodeElementId ?? relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from ?? relObj.start_id ?? relObj.startId;
-      const rawT = relObj.endNodeElementId   ?? relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to   ?? relObj.end_id   ?? relObj.endId;
+      const rawS = relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from ?? relObj.start_id ?? relObj.startId;
+      const rawT = relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to   ?? relObj.end_id   ?? relObj.endId;
 
       const source = resolveEndpoint(rawS) || fallbackSourceId;
       const target = resolveEndpoint(rawT) || fallbackTargetId;
@@ -1113,10 +1112,8 @@
 
     const realEdges = edgeList.map(e => {
       const d = e.data || e;
-
-      // ✅ fixed: prefer exact element ids from Neo4j JSON
-      const source = d.source || d.startNodeElementId || d.startNode || d.start || d.from || d.start_id || d.startId;
-      const target = d.target || d.endNodeElementId || d.endNode || d.end || d.to || d.end_id || d.endId;
+      const source = d.source || d.startNode || d.start || d.from || d.start_id || d.startId;
+      const target = d.target || d.endNode || d.end || d.to || d.end_id || d.endId;
 
       const s = (typeof source === "object") ? neoId(source) : String(source ?? "");
       const t = (typeof target === "object") ? neoId(target) : String(target ?? "");
