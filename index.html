@@ -558,8 +558,12 @@
 
     const center = hub.position();
 
-    const group = cy.nodes().filter(n => n.data("kind")==="real" && n.data("label")===label);
-    group.removeClass("hidden").style("display","element");
+    const group = cy.nodes().filter(n => {
+  if (n.data("kind") !== "real") return false;
+  const mainLabel = n.data("label");
+  const allLabels = n.data("labels") || [];
+  return mainLabel === label || allLabels.includes(label);
+});
 
     const newEdges = [];
     group.forEach(n => {
@@ -1094,7 +1098,18 @@
       const id = d.id || d.elementId || (d.data && d.data.id) || neoId(d);
 
       const nodeData = { id: String(id), labels, properties };
-      const label = (labels && labels[0]) || "Other";
+      const label =
+  labels.includes("KeyExploitableResult") ? "KeyExploitableResult" :
+  labels.includes("Material") ? "Material" :
+  labels.includes("ValueChainStage") ? "ValueChainStage" :
+  labels.includes("Partner") ? "Partner" :
+  labels.includes("Deliverable") ? "Deliverable" :
+  labels.includes("Demonstration") ? "Demonstration" :
+  labels.includes("Innovation") ? "Innovation" :
+  labels.includes("Phase") ? "Phase" :
+  labels.includes("CircularPath") ? "CircularPath" :
+  labels.includes("Path") ? "Path" :
+  (labels && labels[0]) || "Other";
 
       return {
         data: {
