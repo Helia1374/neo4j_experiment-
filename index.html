@@ -4,9 +4,7 @@
   <meta charset="utf-8" />
   <title>Graph Explorer</title>
 
-  <!-- Cytoscape core -->
   <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
-  <!-- Physics layout -->
   <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
 
   <style>
@@ -177,7 +175,6 @@
 <script>
   if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
 
-  // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
     ValueChainStage: "#3DB4FF",
@@ -218,7 +215,6 @@
 
   let cy;
   let runningLayout = null;
-
   let moveMode = false;
 
   const expandState = new Map();
@@ -229,7 +225,6 @@
 
   const enabledLabels = new Map();
 
-  // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -276,24 +271,35 @@
     return String(v);
   }
 
+  function normalizeLabel(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function isKERLabel(s) {
+    const n = normalizeLabel(s);
+    return n === "keyexploitatableresult" ||
+           n === "keyexploitatableresults" ||
+           n === "keyresult" ||
+           n === "keyresults";
+  }
+
   function getPrimaryKnownLabel(labels) {
     const arr = Array.isArray(labels) ? labels : [];
 
-    if (arr.includes("KeyExploitableResult")) return "KeyExploitableResult";
-    if (arr.includes("Material")) return "Material";
-    if (arr.includes("ValueChainStage")) return "ValueChainStage";
-    if (arr.includes("Partner")) return "Partner";
-    if (arr.includes("Deliverable")) return "Deliverable";
-    if (arr.includes("Demonstration")) return "Demonstration";
-    if (arr.includes("Innovation")) return "Innovation";
-    if (arr.includes("Phase")) return "Phase";
-    if (arr.includes("CircularPath")) return "CircularPath";
-    if (arr.includes("Path")) return "Path";
+    for (const l of arr) if (isKERLabel(l)) return "KeyExploitableResult";
+    for (const l of arr) if (normalizeLabel(l) === "material") return "Material";
+    for (const l of arr) if (normalizeLabel(l) === "valuechainstage") return "ValueChainStage";
+    for (const l of arr) if (normalizeLabel(l) === "partner") return "Partner";
+    for (const l of arr) if (normalizeLabel(l) === "deliverable") return "Deliverable";
+    for (const l of arr) if (normalizeLabel(l) === "demonstration") return "Demonstration";
+    for (const l of arr) if (normalizeLabel(l) === "innovation") return "Innovation";
+    for (const l of arr) if (normalizeLabel(l) === "phase") return "Phase";
+    for (const l of arr) if (normalizeLabel(l) === "circularpath") return "CircularPath";
+    for (const l of arr) if (normalizeLabel(l) === "path") return "Path";
 
     return arr[0] || "Other";
   }
 
-  // --------- “name first, description second” for details panel ----------
   function getBestName(d) {
     return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
   }
@@ -336,7 +342,6 @@
     );
   }
 
-  // ----------------------------- Labels (for node title in graph) -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = getPrimaryKnownLabel(labels);
@@ -372,11 +377,8 @@
     return 16;
   }
 
-  function colorForLabel(label) {
-    return COLORS[label] || COLORS.Other;
-  }
+  function colorForLabel(label) { return COLORS[label] || COLORS.Other; }
 
-  // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
 
@@ -463,7 +465,6 @@
     document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
   }
 
-  // ----------------------------- Hover focus -----------------------------
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
@@ -478,7 +479,6 @@
     });
   }
 
-  // ----------------------------- Move mode -----------------------------
   function setMoveMode(on){
     moveMode = on;
     cy.nodes().forEach(n => n.grabbable(on));
@@ -487,15 +487,14 @@
     b.classList.toggle("on", on);
   }
 
-  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
-    const L = (label || "").toLowerCase();
+    const L = normalizeLabel(label);
     if (L === "material") return "HUB_MAT";
     if (L === "partner") return "HUB_PARTNER";
     if (L === "deliverable") return "HUB_DELIV";
     if (L === "demonstration") return "HUB_DEMO";
     if (L === "innovation") return "HUB_INNO";
-    if (L === "keyexploitatableresult") return "HUB_KER";
+    if (L === "keyexploitatableresult" || L === "keyexploitatableresults") return "HUB_KER";
     return null;
   }
 
@@ -561,13 +560,21 @@
 
     const center = hub.position();
 
+    const targetNorm = normalizeLabel(label);
+
     const group = cy.nodes().filter(n => {
       if (n.data("kind") !== "real") return false;
 
       const primary = n.data("label") || "Other";
       const labels = Array.isArray(n.data("labels")) ? n.data("labels") : [];
 
-      return primary === label || labels.includes(label);
+      if (targetNorm === "keyexploitatableresult" || targetNorm === "keyexploitatableresults") {
+        if (primary === "KeyExploitableResult") return true;
+        return labels.some(l => isKERLabel(l));
+      }
+
+      if (normalizeLabel(primary) === targetNorm) return true;
+      return labels.some(l => normalizeLabel(l) === targetNorm);
     });
 
     group.removeClass("hidden").style("display","element");
@@ -604,10 +611,9 @@
     cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 60);
 
     document.getElementById("details").innerHTML =
-      `<div class="muted"><b>${label}</b> opened. Double click any node to expand.</div>`;
+      `<div class="muted"><b>${label}</b> opened. Matching nodes: <b>${group.length}</b></div>`;
   }
 
-  // ----------------------------- Filters -----------------------------
   function buildFiltersFromGraph() {
     const labels = new Set();
     cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
@@ -659,7 +665,6 @@
     });
   }
 
-  // ----------------------------- Breadcrumb + path highlighting -----------------------------
   function pushBreadcrumb(node) {
     const id = node.id();
     if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
@@ -779,7 +784,6 @@
     }
   }
 
-  // ----------------------------- Local physics -----------------------------
   function localSubgraphAround(node, hops=2) {
     let s = node;
     for (let i=0; i<hops; i++) s = s.closedNeighborhood();
@@ -827,7 +831,6 @@
     runningLayout.run();
   }
 
-  // ----------------------------- Expand / Collapse -----------------------------
   function getOrderedNeighbors(node) {
     const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
     const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
@@ -937,14 +940,12 @@
     showDetails(node);
   }
 
-  // ----------------------------- Edge label visibility -----------------------------
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
     if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
     else cy.edges().removeClass("show-edge-labels");
   }
 
-  // ----------------------------- Click handling -----------------------------
   let lastTapTime = 0;
   let lastTapId = null;
 
@@ -989,7 +990,6 @@
     });
   }
 
-  // ----------------------------- JSON parsing -----------------------------
   function rowsNrmToElements(rows) {
     const nodeMap = new Map();
     const idMap = new Map();
@@ -1076,7 +1076,6 @@
     return null;
   }
 
-  // ----------------------------- Main -----------------------------
   async function main() {
     const res = await fetch("./graph.json", { cache: "no-store" });
     if (!res.ok) {
@@ -1136,10 +1135,15 @@
     const broken = realEdges.filter(e => !nodeIdSet.has(e.data.source) || !nodeIdSet.has(e.data.target));
     const goodEdges = realEdges.filter(e => nodeIdSet.has(e.data.source) && nodeIdSet.has(e.data.target));
 
+    const kerRawCount = realNodes.filter(n =>
+      (n.data.labels || []).some(l => isKERLabel(l)) || n.data.label === "KeyExploitableResult"
+    ).length;
+
     document.getElementById("debug").innerHTML =
       `<div class="pill">Loaded nodes: <b>${realNodes.length}</b></div>
        <div class="pill">Edges in file: <b>${realEdges.length}</b></div>
        <div class="pill">Drawable edges: <b>${goodEdges.length}</b></div>
+       <div class="pill">KER matched nodes: <b>${kerRawCount}</b></div>
        ${broken.length ? `<div style="margin-top:8px;" class="muted">⚠️ <b>${broken.length}</b> edges reference missing node ids (id mismatch).</div>` : ""}`;
 
     document.getElementById("stats").innerHTML =
