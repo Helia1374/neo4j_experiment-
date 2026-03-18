@@ -561,7 +561,25 @@
     const center = hub.position();
 
     const group = cy.nodes().filter(n => {
-      return n.data("kind") === "real" && n.data("label") === label;
+      if (n.data("kind") !== "real") return false;
+
+      const nodeLabel = n.data("label");
+      const labels = n.data("labels") || [];
+      const p = n.data("properties") || {};
+
+      if (label === "KeyExploitableResult") {
+        return (
+          nodeLabel === "KeyExploitableResult" ||
+          labels.includes("KeyExploitableResult") ||
+          (
+            typeof p.name === "string" &&
+            typeof p.description === "string" &&
+            Object.prototype.hasOwnProperty.call(p, "background_IP")
+          )
+        );
+      }
+
+      return nodeLabel === label || labels.includes(label);
     });
 
     group.removeClass("hidden").style("display","element");
@@ -570,9 +588,16 @@
     group.forEach(n => {
       newEdges.push({
         group: "edges",
-        data: { id: `HE_${hubId}_${n.id()}`, source: hubId, target: n.id(), label: "", kind: "hubEdge" }
+        data: {
+          id: `HE_${hubId}_${n.id()}`,
+          source: hubId,
+          target: n.id(),
+          label: "",
+          kind: "hubEdge"
+        }
       });
     });
+
     if (newEdges.length) cy.add(newEdges);
     cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
 
@@ -589,7 +614,10 @@
       const radius = baseR + ring * ringGap;
       const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
 
-      n.position({ x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a) });
+      n.position({
+        x: center.x + radius * Math.cos(a),
+        y: center.y + radius * Math.sin(a)
+      });
       n.data("_placed", true);
       expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
     });
@@ -1130,7 +1158,10 @@
     const broken = realEdges.filter(e => !nodeIdSet.has(e.data.source) || !nodeIdSet.has(e.data.target));
     const goodEdges = realEdges.filter(e => nodeIdSet.has(e.data.source) && nodeIdSet.has(e.data.target));
 
-    const kerCount = realNodes.filter(n => n.data.label === "KeyExploitableResult").length;
+    const kerCount = realNodes.filter(n =>
+      n.data.label === "KeyExploitableResult" ||
+      (n.data.labels || []).includes("KeyExploitableResult")
+    ).length;
 
     document.getElementById("debug").innerHTML =
       `<div class="pill">Loaded nodes: <b>${realNodes.length}</b></div>
