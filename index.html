@@ -206,6 +206,14 @@
     { id: "HUB_INNO", label: "Innovation", title: "Innovations" },
     { id: "HUB_KER", label: "KeyExploitableResult", title: "Key Exploitable Results" }
   ];
+  const HUB_LOGOS = {
+  HUB_MAT: "./logos/hubs/materials.png",
+  HUB_PARTNER: "./logos/hubs/partners.png",
+  HUB_DELIV: "./logos/hubs/deliverables.png",
+  HUB_DEMO: "./logos/hubs/demonstrations.png",
+  HUB_INNO: "./logos/hubs/innovations.png",
+  HUB_KER: "./logos/hubs/key_results.png"
+};
 
   const BATCH = 12;
   const SEED_RADIUS = 110;
@@ -1180,8 +1188,16 @@
       `Nodes: <b>${realNodes.length}</b> • Edges: <b>${goodEdges.length}</b>`;
 
     const hubNodes = HUBS.map(h => ({
-      data: { id:h.id, label:h.label, title:h.title, color:HUB_COLORS[h.label] || "#B8BFFF", size:125, kind:"hub" }
-    }));
+  data: {
+    id: h.id,
+    label: h.label,
+    title: h.title,
+    color: HUB_COLORS[h.label] || "#B8BFFF",
+    size: 125,
+    kind: "hub",
+    logo: HUB_LOGOS[h.id] || null
+  }
+}));
 
     cy = cytoscape({
       container: document.getElementById("cy"),
@@ -1246,32 +1262,35 @@
         {
   selector:'node[kind="hub"]',
   style:{
-    "shape": "round-rectangle",   // 👈 makes it square with soft corners
+    "shape": "round-rectangle",
     "width": 120,
     "height": 120,
 
     "background-color": "#ffffff",
     "background-image": "data(logo)",
     "background-fit": "contain",
-    "background-width": "70%",
-    "background-height": "70%",
+    "background-width": "72%",
+    "background-height": "72%",
     "background-position-x": "50%",
-    "background-position-y": "50%",
+    "background-position-y": "38%",
+    "background-repeat": "no-repeat",
 
     "border-width": 4,
-    "border-color": "rgba(255,255,255,0.35)",
+    "border-color": "rgba(233,236,255,0.35)",
 
     "label": "data(title)",
     "color": "#FFF",
     "font-size": 16,
     "font-weight": "bold",
+    "text-valign": "bottom",
+    "text-margin-y": 10,
 
     "text-outline-width": 5,
     "text-outline-color": "#000",
 
     "shadow-blur": 25,
     "shadow-color": "data(color)",
-    "shadow-opacity": 0.6
+    "shadow-opacity": 0.60
   }
 },
 
