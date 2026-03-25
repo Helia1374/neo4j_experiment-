@@ -4,9 +4,7 @@
   <meta charset="utf-8" />
   <title>Graph Explorer</title>
 
-  <!-- Cytoscape core -->
   <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
-  <!-- Physics layout -->
   <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
 
   <style>
@@ -177,7 +175,6 @@
 <script>
   if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
 
-  // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
     ValueChainStage: "#3DB4FF",
@@ -228,7 +225,22 @@
 
   const enabledLabels = new Map();
 
-  // ----------------------------- Utils -----------------------------
+  const INNOVATION_LOGOS = {
+    "Interfaces to existing databases and planning tools": "./logos/innovations/interfaces_to_existing_databases_and_planning_tools.png",
+    "BIM supported modular dismantling planning methods": "./logos/innovations/bim_modular_dismantling_planning_methods.png",
+    "Strategic circular decision making for real estate assets": "./logos/innovations/strategic_circular_decision_making_for_real_estate_assets.png",
+    "Strategic circular decision making for real estate assets ": "./logos/innovations/strategic_circular_decision_making_for_real_estate_assets.png",
+    "On-site waste assessment and seperation": "./logos/innovations/on-site_waste_assessment_and_separation.png",
+    "On-site waste assessment and seperation ": "./logos/innovations/on-site_waste_assessment_and_separation.png",
+    "Upgrade solutions for construction products": "./logos/innovations/upgrade_solutions_for_construction_products.png",
+    "Upgrade solutions for construction products ": "./logos/innovations/upgrade_solutions_for_construction_products.png",
+    "Architectural design methods": "./logos/innovations/architectural_design_method.png",
+    "Lean construction resource planning": "./logos/innovations/lean_construction_resource_planning.png",
+    "Valuation of recycled materials": "./logos/innovations/valuation_of_recycled_materials.png",
+    "BIM for circular value flow planning": "./logos/innovations/bim_for_circular_value_flow_planning.png",
+    "Building inspection and valuation": "./logos/innovations/building_inspection_and_valuation.png"
+  };
+
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -292,7 +304,6 @@
     return arr[0] || "Other";
   }
 
-  // --------- “name first, description second” for details panel ----------
   function getBestName(d) {
     return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
   }
@@ -335,7 +346,6 @@
     );
   }
 
-  // ----------------------------- Labels -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = getPrimaryKnownLabel(labels);
@@ -375,7 +385,6 @@
     return COLORS[label] || COLORS.Other;
   }
 
-  // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
 
@@ -413,7 +422,7 @@
     ];
 
     const skipKeys = new Set([
-      "color","title","kind","_placed","size","labels","label"
+      "color","title","kind","_placed","size","labels","label","logo"
     ]);
 
     const descKey = desc?.key;
@@ -462,7 +471,6 @@
     document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
   }
 
-  // ----------------------------- Hover focus -----------------------------
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
@@ -477,7 +485,6 @@
     });
   }
 
-  // ----------------------------- Move mode -----------------------------
   function setMoveMode(on){
     moveMode = on;
     cy.nodes().forEach(n => n.grabbable(on));
@@ -486,7 +493,6 @@
     b.classList.toggle("on", on);
   }
 
-  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -629,7 +635,6 @@
       `<div class="muted"><b>${label}</b> opened. Nodes shown: <b>${group.length}</b></div>`;
   }
 
-  // ----------------------------- Filters -----------------------------
   function buildFiltersFromGraph() {
     const labels = new Set();
     cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
@@ -681,7 +686,6 @@
     });
   }
 
-  // ----------------------------- Breadcrumb + path highlighting -----------------------------
   function pushBreadcrumb(node) {
     const id = node.id();
     if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
@@ -801,7 +805,6 @@
     }
   }
 
-  // ----------------------------- Local physics -----------------------------
   function localSubgraphAround(node, hops=2) {
     let s = node;
     for (let i=0; i<hops; i++) s = s.closedNeighborhood();
@@ -849,7 +852,6 @@
     runningLayout.run();
   }
 
-  // ----------------------------- Expand / Collapse -----------------------------
   function getOrderedNeighbors(node) {
     const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
     const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
@@ -959,14 +961,12 @@
     showDetails(node);
   }
 
-  // ----------------------------- Edge label visibility -----------------------------
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
     if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
     else cy.edges().removeClass("show-edge-labels");
   }
 
-  // ----------------------------- Click handling -----------------------------
   let lastTapTime = 0;
   let lastTapId = null;
 
@@ -1011,7 +1011,6 @@
     });
   }
 
-  // ----------------------------- JSON parsing -----------------------------
   function rowsNrmToElements(rows) {
     const nodeMap = new Map();
     const idMap = new Map();
@@ -1098,7 +1097,6 @@
     return null;
   }
 
-  // ----------------------------- Main -----------------------------
   async function main() {
     const res = await fetch("./graph.json", { cache: "no-store" });
     if (!res.ok) {
@@ -1125,15 +1123,23 @@
 
       const nodeData = { id: String(id), labels, properties };
       const label = getPrimaryKnownLabel(labels);
+      const title = pickNodeLabel(nodeData);
+
+      let logo = null;
+      if (label === "Innovation") {
+        const innovationName = (properties.innovations_name || "").trim();
+        logo = INNOVATION_LOGOS[innovationName] || INNOVATION_LOGOS[properties.innovations_name] || null;
+      }
 
       return {
         data: {
           ...nodeData,
           label,
-          title: pickNodeLabel(nodeData),
+          title,
           color: colorForLabel(label),
           size: sizeForLabel(label),
-          kind: "real"
+          kind: "real",
+          logo
         }
       };
     });
@@ -1192,15 +1198,49 @@
         { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
 
         {
+          selector: 'node[kind="real"][label="Innovation"]',
+          style: {
+            "background-color":"#ffffff",
+            "background-image":"data(logo)",
+            "background-fit":"contain",
+            "background-width":"90%",
+            "background-height":"90%",
+            "background-position-x":"50%",
+            "background-position-y":"50%",
+            "width":55,
+            "height":55,
+            "border-width":2,
+            "border-color":"rgba(255,255,255,0.22)",
+            "label":"data(title)",
+            "color":"#E9ECFF",
+            "font-size":12,
+            "text-wrap":"wrap",
+            "text-max-width":120,
+            "text-outline-width":4,
+            "text-outline-color":"#000",
+            "shadow-blur":16,
+            "shadow-color":"data(color)",
+            "shadow-opacity":0.30
+          }
+        },
+        {
           selector: 'node[kind="real"]',
           style: {
             "background-color":"data(color)",
-            "width":"data(size)","height":"data(size)",
-            "border-width":2,"border-color":"rgba(255,255,255,0.18)",
-            "label":"data(title)","color":"#E9ECFF","font-size":12,
-            "text-wrap":"wrap","text-max-width":120,
-            "text-outline-width":4,"text-outline-color":"#000",
-            "shadow-blur":16,"shadow-color":"data(color)","shadow-opacity":0.30
+            "width":"data(size)",
+            "height":"data(size)",
+            "border-width":2,
+            "border-color":"rgba(255,255,255,0.18)",
+            "label":"data(title)",
+            "color":"#E9ECFF",
+            "font-size":12,
+            "text-wrap":"wrap",
+            "text-max-width":120,
+            "text-outline-width":4,
+            "text-outline-color":"#000",
+            "shadow-blur":16,
+            "shadow-color":"data(color)",
+            "shadow-opacity":0.30
           }
         },
         {
