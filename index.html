@@ -175,7 +175,6 @@
 <script>
   if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
 
-  // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
     ValueChainStage: "#3DB4FF",
@@ -259,7 +258,6 @@
     "Building inspection and valuation": "./logos/innovations/building_inspection_and_valuation.png"
   };
 
-  // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -325,7 +323,6 @@
     return arr[0] || "Other";
   }
 
-  // --------- “name first, description second” for details panel ----------
   function getBestName(d) {
     return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
   }
@@ -369,7 +366,6 @@
     );
   }
 
-  // ----------------------------- Labels -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = getPrimaryKnownLabel(labels);
@@ -402,8 +398,8 @@
     if (label === "Demonstration") return 21;
     if (label === "Innovation") return 21;
     if (label === "KeyExploitableResult") return 21;
-    if (label === "Standard") return 22;
-    if (label === "Publication") return 22;
+    if (label === "Standard") return 36;
+    if (label === "Publication") return 30;
     if (label === "Phase") return 18;
     if (label === "CircularPath" || label === "Path") return 20;
     return 16;
@@ -413,7 +409,6 @@
     return COLORS[label] || COLORS.Other;
   }
 
-  // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
 
@@ -501,7 +496,6 @@
     document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
   }
 
-  // ----------------------------- Hover focus -----------------------------
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
@@ -516,7 +510,6 @@
     });
   }
 
-  // ----------------------------- Move mode -----------------------------
   function setMoveMode(on){
     moveMode = on;
     cy.nodes().forEach(n => n.grabbable(on));
@@ -525,7 +518,6 @@
     b.classList.toggle("on", on);
   }
 
-  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -644,9 +636,9 @@
 
     const nodes = group.toArray();
     const startAngle = -Math.PI / 2;
-    const perRing = 18;
-    const baseR   = 260;
-    const ringGap = 95;
+    const perRing = 14;
+    const baseR   = 320;
+    const ringGap = 120;
 
     nodes.forEach((n, i) => {
       const ring = Math.floor(i / perRing);
@@ -664,13 +656,12 @@
     });
 
     applyFilters();
-    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 60);
+    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 80);
 
     document.getElementById("details").innerHTML =
       `<div class="muted"><b>${label}</b> opened. Nodes shown: <b>${group.length}</b></div>`;
   }
 
-  // ----------------------------- Filters -----------------------------
   function buildFiltersFromGraph() {
     const labels = new Set();
     cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
@@ -722,7 +713,6 @@
     });
   }
 
-  // ----------------------------- Breadcrumb + path highlighting -----------------------------
   function pushBreadcrumb(node) {
     const id = node.id();
     if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
@@ -842,7 +832,6 @@
     }
   }
 
-  // ----------------------------- Local physics -----------------------------
   function localSubgraphAround(node, hops=2) {
     let s = node;
     for (let i=0; i<hops; i++) s = s.closedNeighborhood();
@@ -890,7 +879,6 @@
     runningLayout.run();
   }
 
-  // ----------------------------- Expand / Collapse -----------------------------
   function getOrderedNeighbors(node) {
     const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
     const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
@@ -1000,14 +988,12 @@
     showDetails(node);
   }
 
-  // ----------------------------- Edge label visibility -----------------------------
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
     if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
     else cy.edges().removeClass("show-edge-labels");
   }
 
-  // ----------------------------- Click handling -----------------------------
   let lastTapTime = 0;
   let lastTapId = null;
 
@@ -1028,8 +1014,8 @@
       pathA = ele;
       document.getElementById("pathsel").innerHTML =
         `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
-        return;
-      }
+      return;
+    }
 
     const now = Date.now();
     const id = ele.id();
@@ -1052,7 +1038,6 @@
     });
   }
 
-  // ----------------------------- JSON parsing -----------------------------
   function rowsNrmToElements(rows) {
     const nodeMap = new Map();
     const idMap = new Map();
@@ -1139,7 +1124,6 @@
     return null;
   }
 
-  // ----------------------------- Main -----------------------------
   async function main() {
     const res = await fetch("./graph.json", { cache: "no-store" });
     if (!res.ok) {
@@ -1158,6 +1142,8 @@
       return;
     }
 
+    let publicationCounter = 1;
+
     const realNodes = elements.nodes.map(n => {
       const d = n.data || n;
       const labels = Array.isArray(d.labels || (d.data?.labels)) ? (d.labels || (d.data?.labels) || []) : [];
@@ -1166,7 +1152,12 @@
 
       const nodeData = { id: String(id), labels, properties };
       const label = getPrimaryKnownLabel(labels);
-      const title = pickNodeLabel(nodeData);
+
+      let title = pickNodeLabel(nodeData);
+
+      if (label === "Publication") {
+        title = `P${publicationCounter++}`;
+      }
 
       let logo = null;
       if (label === "Innovation") {
@@ -1284,9 +1275,9 @@
             "border-color":"rgba(255,255,255,0.18)",
             "label":"data(title)",
             "color":"#E9ECFF",
-            "font-size":12,
+            "font-size":11,
             "text-wrap":"wrap",
-            "text-max-width":120,
+            "text-max-width":90,
             "text-outline-width":4,
             "text-outline-color":"#000",
             "shadow-blur":16,
