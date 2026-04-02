@@ -645,7 +645,9 @@
       const idx  = i % perRing;
       const ringCount = Math.min(perRing, nodes.length - ring * perRing);
       const radius = baseR + ring * ringGap;
-      const a = startAngle + (2 * Math.PI * idx) / Math.max(ringCount, 1);
+      const arcStart = -Math.PI * 0.75;
+const arcEnd = Math.PI * 0.75;
+const a = arcStart + ((arcEnd - arcStart) * idx) / Math.max(ringCount - 1, 1);
 
       n.position({
         x: center.x + radius * Math.cos(a),
