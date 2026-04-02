@@ -175,6 +175,7 @@
 <script>
   if (typeof cytoscapeFcose !== "undefined") cytoscape.use(cytoscapeFcose);
 
+  // ----------------------------- Config -----------------------------
   const COLORS = {
     Material: "#00E5FF",
     ValueChainStage: "#3DB4FF",
@@ -183,6 +184,8 @@
     Demonstration: "#FFD34A",
     Innovation: "#FF7A00",
     KeyExploitableResult: "#7CFFB2",
+    Standard: "#4FD18B",
+    Publication: "#FF8ACB",
     Phase: "#A3A9FF",
     CircularPath: "#B8BFFF",
     Path: "#B8BFFF",
@@ -195,7 +198,9 @@
     Deliverable: "#B4FF4A",
     Demonstration: "#FFE06A",
     Innovation: "#FF9A3C",
-    KeyExploitableResult: "#7CFFB2"
+    KeyExploitableResult: "#7CFFB2",
+    Standard: "#4FD18B",
+    Publication: "#FF8ACB"
   };
 
   const HUBS = [
@@ -204,16 +209,21 @@
     { id: "HUB_DELIV", label: "Deliverable", title: "Deliverables" },
     { id: "HUB_DEMO", label: "Demonstration", title: "Demonstrations" },
     { id: "HUB_INNO", label: "Innovation", title: "Innovations" },
-    { id: "HUB_KER", label: "KeyExploitableResult", title: "Key Exploitable Results" }
+    { id: "HUB_KER", label: "KeyExploitableResult", title: "Key Exploitable Results" },
+    { id: "HUB_STANDARD", label: "Standard", title: "Standards" },
+    { id: "HUB_PUBLICATION", label: "Publication", title: "Publications" }
   ];
+
   const HUB_LOGOS = {
-  HUB_MAT: "./logos/hubs/materials.png",
-  HUB_PARTNER: "./logos/hubs/partners.png",
-  HUB_DELIV: "./logos/hubs/deliverables.png",
-  HUB_DEMO: "./logos/hubs/demonstrations.png",
-  HUB_INNO: "./logos/hubs/innovations.png",
-  HUB_KER: "./logos/hubs/key_results.png"
-};
+    HUB_MAT: "./logos/hubs/materials.png",
+    HUB_PARTNER: "./logos/hubs/partners.png",
+    HUB_DELIV: "./logos/hubs/deliverables.png",
+    HUB_DEMO: "./logos/hubs/demonstrations.png",
+    HUB_INNO: "./logos/hubs/innovations.png",
+    HUB_KER: "./logos/hubs/key_results.png",
+    HUB_STANDARD: "./logos/hubs/standards.png",
+    HUB_PUBLICATION: "./logos/hubs/publications.png"
+  };
 
   const BATCH = 12;
   const SEED_RADIUS = 110;
@@ -249,6 +259,7 @@
     "Building inspection and valuation": "./logos/innovations/building_inspection_and_valuation.png"
   };
 
+  // ----------------------------- Utils -----------------------------
   function asNiceText(v) {
     if (v == null) return "";
     if (Array.isArray(v)) return v.filter(Boolean).join(" • ");
@@ -305,6 +316,8 @@
     if (arr.includes("Demonstration")) return "Demonstration";
     if (arr.includes("Innovation")) return "Innovation";
     if (arr.includes("KeyExploitableResult")) return "KeyExploitableResult";
+    if (arr.includes("Standard")) return "Standard";
+    if (arr.includes("Publication")) return "Publication";
     if (arr.includes("Phase")) return "Phase";
     if (arr.includes("CircularPath")) return "CircularPath";
     if (arr.includes("Path")) return "Path";
@@ -312,6 +325,7 @@
     return arr[0] || "Other";
   }
 
+  // --------- “name first, description second” for details panel ----------
   function getBestName(d) {
     return (d.title && String(d.title).trim()) ? String(d.title).trim() : (d.label || "Node");
   }
@@ -329,10 +343,11 @@
       "partners_description",
       "partner_description",
       "material_description",
-      "phase_description",
-      "notes",
+      "publication_abstract",
+      "abstract",
       "summary",
-      "abstract"
+      "notes",
+      "phase_description"
     ];
 
     for (const k of candidates) {
@@ -354,6 +369,7 @@
     );
   }
 
+  // ----------------------------- Labels -----------------------------
   function pickNodeLabel(d) {
     const labels = d.labels || [];
     const label = getPrimaryKnownLabel(labels);
@@ -370,6 +386,8 @@
     if (label === "Demonstration") return asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
     if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
     if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(d.id);
+    if (label === "Standard") return asNiceText(p.standard_code) || asNiceText(p.standard_title) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "Publication") return asNiceText(p.publication_title) || asNiceText(p.title) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Phase") return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "CircularPath" || label === "Path") return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
 
@@ -384,6 +402,8 @@
     if (label === "Demonstration") return 21;
     if (label === "Innovation") return 21;
     if (label === "KeyExploitableResult") return 21;
+    if (label === "Standard") return 22;
+    if (label === "Publication") return 22;
     if (label === "Phase") return 18;
     if (label === "CircularPath" || label === "Path") return 20;
     return 16;
@@ -393,6 +413,7 @@
     return COLORS[label] || COLORS.Other;
   }
 
+  // ----------------------------- Details -----------------------------
   function showDetails(ele) {
     const d = ele.data();
 
@@ -421,12 +442,13 @@
     const props = d.properties || {};
 
     const nameKeys = [
-      "name","title",
+      "name","title","publication_title",
       "innovations_name","innovations",
       "deliverables_name","deliverables_no",
       "demonstrations","demonstrations_type",
       "partners","partners_legalname",
-      "material","phase_id","phases","phase_path"
+      "material","phase_id","phases","phase_path",
+      "standard_code","standard_title"
     ];
 
     const skipKeys = new Set([
@@ -479,6 +501,7 @@
     document.getElementById("btnCenter").onclick = () => cy.animate({ center:{ eles: ele } }, { duration: 200 });
   }
 
+  // ----------------------------- Hover focus -----------------------------
   function enableHoverFocus() {
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
@@ -493,6 +516,7 @@
     });
   }
 
+  // ----------------------------- Move mode -----------------------------
   function setMoveMode(on){
     moveMode = on;
     cy.nodes().forEach(n => n.grabbable(on));
@@ -501,6 +525,7 @@
     b.classList.toggle("on", on);
   }
 
+  // ----------------------------- Hub helpers -----------------------------
   function hubIdFor(label) {
     const L = (label || "").toLowerCase();
     if (L === "material") return "HUB_MAT";
@@ -509,6 +534,8 @@
     if (L === "demonstration") return "HUB_DEMO";
     if (L === "innovation") return "HUB_INNO";
     if (L === "keyexploitatableresult") return "HUB_KER";
+    if (L === "standard") return "HUB_STANDARD";
+    if (L === "publication") return "HUB_PUBLICATION";
     return null;
   }
 
@@ -537,7 +564,7 @@
     const w = cy.width(), h = cy.height();
     const cx = w * 0.47;
     const cyy = h * 0.55;
-    const R = Math.min(w,h) * 0.28;
+    const R = Math.min(w,h) * 0.30;
 
     const hubs = HUBS.map(h => cy.getElementById(h.id));
     hubs.forEach((node, i) => {
@@ -643,6 +670,7 @@
       `<div class="muted"><b>${label}</b> opened. Nodes shown: <b>${group.length}</b></div>`;
   }
 
+  // ----------------------------- Filters -----------------------------
   function buildFiltersFromGraph() {
     const labels = new Set();
     cy.nodes('[kind="real"]').forEach(n => labels.add(n.data("label") || "Other"));
@@ -694,6 +722,7 @@
     });
   }
 
+  // ----------------------------- Breadcrumb + path highlighting -----------------------------
   function pushBreadcrumb(node) {
     const id = node.id();
     if (breadcrumb[breadcrumb.length-1] !== id) breadcrumb.push(id);
@@ -813,6 +842,7 @@
     }
   }
 
+  // ----------------------------- Local physics -----------------------------
   function localSubgraphAround(node, hops=2) {
     let s = node;
     for (let i=0; i<hops; i++) s = s.closedNeighborhood();
@@ -860,6 +890,7 @@
     runningLayout.run();
   }
 
+  // ----------------------------- Expand / Collapse -----------------------------
   function getOrderedNeighbors(node) {
     const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
     const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
@@ -969,12 +1000,14 @@
     showDetails(node);
   }
 
+  // ----------------------------- Edge label visibility -----------------------------
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
     if (z >= EDGE_LABEL_ZOOM) cy.edges().addClass("show-edge-labels");
     else cy.edges().removeClass("show-edge-labels");
   }
 
+  // ----------------------------- Click handling -----------------------------
   let lastTapTime = 0;
   let lastTapId = null;
 
@@ -995,8 +1028,8 @@
       pathA = ele;
       document.getElementById("pathsel").innerHTML =
         `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
-      return;
-    }
+        return;
+      }
 
     const now = Date.now();
     const id = ele.id();
@@ -1019,6 +1052,7 @@
     });
   }
 
+  // ----------------------------- JSON parsing -----------------------------
   function rowsNrmToElements(rows) {
     const nodeMap = new Map();
     const idMap = new Map();
@@ -1105,6 +1139,7 @@
     return null;
   }
 
+  // ----------------------------- Main -----------------------------
   async function main() {
     const res = await fetch("./graph.json", { cache: "no-store" });
     if (!res.ok) {
@@ -1188,16 +1223,16 @@
       `Nodes: <b>${realNodes.length}</b> • Edges: <b>${goodEdges.length}</b>`;
 
     const hubNodes = HUBS.map(h => ({
-  data: {
-    id: h.id,
-    label: h.label,
-    title: h.title,
-    color: HUB_COLORS[h.label] || "#B8BFFF",
-    size: 125,
-    kind: "hub",
-    logo: HUB_LOGOS[h.id] || null
-  }
-}));
+      data: {
+        id: h.id,
+        label: h.label,
+        title: h.title,
+        color: HUB_COLORS[h.label] || "#B8BFFF",
+        size: 125,
+        kind: "hub",
+        logo: HUB_LOGOS[h.id] || null
+      }
+    }));
 
     cy = cytoscape({
       container: document.getElementById("cy"),
@@ -1260,39 +1295,39 @@
           }
         },
         {
-  selector:'node[kind="hub"]',
-  style:{
-    "shape": "round-rectangle",
-    "width": 120,
-    "height": 120,
+          selector:'node[kind="hub"]',
+          style:{
+            "shape": "round-rectangle",
+            "width": 120,
+            "height": 120,
 
-    "background-color": "#ffffff",
-    "background-image": "data(logo)",
-    "background-fit": "contain",
-    "background-width": "72%",
-    "background-height": "72%",
-    "background-position-x": "50%",
-    "background-position-y": "38%",
-    "background-repeat": "no-repeat",
+            "background-color": "#ffffff",
+            "background-image": "data(logo)",
+            "background-fit": "contain",
+            "background-width": "72%",
+            "background-height": "72%",
+            "background-position-x": "50%",
+            "background-position-y": "38%",
+            "background-repeat": "no-repeat",
 
-    "border-width": 4,
-    "border-color": "rgba(233,236,255,0.35)",
+            "border-width": 4,
+            "border-color": "rgba(233,236,255,0.35)",
 
-    "label": "data(title)",
-    "color": "#FFF",
-    "font-size": 16,
-    "font-weight": "bold",
-    "text-valign": "bottom",
-    "text-margin-y": 10,
+            "label": "data(title)",
+            "color": "#FFF",
+            "font-size": 16,
+            "font-weight": "bold",
+            "text-valign": "bottom",
+            "text-margin-y": 10,
 
-    "text-outline-width": 5,
-    "text-outline-color": "#000",
+            "text-outline-width": 5,
+            "text-outline-color": "#000",
 
-    "shadow-blur": 25,
-    "shadow-color": "data(color)",
-    "shadow-opacity": 0.60
-  }
-},
+            "shadow-blur": 25,
+            "shadow-color": "data(color)",
+            "shadow-opacity": 0.60
+          }
+        },
 
         {
           selector:"edge",
