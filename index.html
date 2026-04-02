@@ -640,14 +640,14 @@
     const baseR   = 320;
     const ringGap = 120;
 
-    nodes.forEach((n, i) => {
-      const ring = Math.floor(i / perRing);
-      const idx  = i % perRing;
-      const ringCount = Math.min(perRing, nodes.length - ring * perRing);
-      const radius = baseR + ring * ringGap;
-      const arcStart = -Math.PI * 0.75;
-const arcStart = -Math.PI / 2;
-const arcEnd = Math.PI / 2;
+      nodes.forEach((n, i) => {
+  const spacing = 70;                 // vertical gap between nodes
+  const listX = hub.x + 220;         // distance from hub
+  const startY = hub.y - ((nodes.length - 1) * spacing) / 2;
+
+  n.x = listX;
+  n.y = startY + i * spacing;
+});
 
       n.position({
         x: center.x + radius * Math.cos(a),
