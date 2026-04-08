@@ -54,12 +54,15 @@
       overflow: auto;
       background: linear-gradient(180deg, rgba(15,18,34,0.98), rgba(8,10,18,0.98));
       color: #E9ECFF;
+      position: relative;
+      z-index: 5;
     }
 
     #toolbar{
       position: fixed;
       top: 12px;
       left: 12px;
+      right: 434px; /* keeps toolbar out of the sidebar */
       z-index: 999;
       background: rgba(10,12,22,0.85);
       border: 1px solid rgba(255,255,255,0.10);
@@ -71,8 +74,28 @@
       align-items: center;
       backdrop-filter: blur(8px);
       color: #E9ECFF;
-      max-width: 1280px;
       flex-wrap: wrap;
+      box-sizing: border-box;
+    }
+
+    .toolbar-title{
+      font-weight:700;
+      white-space: nowrap;
+      margin-right: 4px;
+    }
+
+    .toolbar-spacer{
+      flex: 1 1 auto;
+      min-width: 12px;
+    }
+
+    .toolbar-hint{
+      flex: 1 1 320px;
+      min-width: 220px;
+    }
+
+    .stats{
+      white-space: nowrap;
     }
 
     .btn{
@@ -83,6 +106,7 @@
       border-radius: 10px;
       cursor: pointer;
       user-select: none;
+      white-space: nowrap;
     }
     .btn:hover{ background: rgba(255,255,255,0.12); }
 
@@ -92,13 +116,15 @@
     }
 
     #search{
-      width: 280px;
+      width: 240px;
+      max-width: 100%;
       padding: 8px 10px;
       border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.06);
       color: #E9ECFF;
       outline: none;
+      box-sizing: border-box;
     }
     #search::placeholder{ color: rgba(233,236,255,0.6); }
 
@@ -119,26 +145,35 @@
     .sectionTitle { font-weight:700; color:#E9ECFF; margin:6px 0; }
     .bigTitle { font-weight:800; font-size:16px; margin:2px 0 6px; }
     .descBox { padding:8px 10px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.10); }
+
+    @media (max-width: 1200px) {
+      #toolbar {
+        right: 12px;
+      }
+      #side {
+        width: 360px;
+      }
+    }
   </style>
 </head>
 
 <body>
   <div id="toolbar">
-    <div style="font-weight:700;">⚡ Graph Explorer</div>
+    <div class="toolbar-title">⚡ Graph Explorer</div>
 
     <div class="btn" id="btnHome">Home</div>
     <div class="btn" id="btnBack">Back</div>
     <div class="btn" id="btnCollapse">Collapse</div>
     <div class="btn" id="btnShowAll">Show all</div>
     <div class="btn" id="btnFit">Fit</div>
-
     <div class="btn" id="btnMove">Move: OFF</div>
     <div class="btn" id="btnClear">Clear highlights</div>
 
     <input id="search" placeholder="Search (any property), press Enter" />
 
-    <div class="muted">Single click = details • Double click = expand • Shift+click 2 nodes = shortest path • Right click = pin/unpin</div>
-    <div class="muted" id="stats" style="margin-left:auto;"></div>
+    <div class="toolbar-spacer"></div>
+    <div class="muted toolbar-hint">Single click = details • Double click = expand • Shift+click 2 nodes = shortest path • Right click = pin/unpin</div>
+    <div class="muted stats" id="stats"></div>
   </div>
 
   <div id="app">
@@ -187,6 +222,8 @@
     KeyExploitableResult: "#7CFFB2",
     Standard: "#4FD18B",
     Publication: "#FF8ACB",
+    Gap: "#FFD166",
+    Recommendation: "#A78BFA",
     Phase: "#A3A9FF",
     CircularPath: "#B8BFFF",
     Path: "#B8BFFF",
@@ -318,6 +355,8 @@
     if (arr.includes("KeyExploitableResult")) return "KeyExploitableResult";
     if (arr.includes("Standard")) return "Standard";
     if (arr.includes("Publication")) return "Publication";
+    if (arr.includes("Gap")) return "Gap";
+    if (arr.includes("Recommendation")) return "Recommendation";
     if (arr.includes("Phase")) return "Phase";
     if (arr.includes("CircularPath")) return "CircularPath";
     if (arr.includes("Path")) return "Path";
@@ -386,6 +425,8 @@
     if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(d.id);
     if (label === "Standard") return asNiceText(p.standard_code) || asNiceText(p.standard_title) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Publication") return asNiceText(p.publication_title) || asNiceText(p.title) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "Gap") return asNiceText(p.gap_id) || asNiceText(p.gap_name) || asNiceText(p.name) || asNiceText(d.id);
+    if (label === "Recommendation") return asNiceText(p.recommendation_name) || asNiceText(p.name) || asNiceText(p.title) || asNiceText(d.id);
     if (label === "Phase") return asNiceText(p.phase_id) || asNiceText(p.phases) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "CircularPath" || label === "Path") return asNiceText(p.name) || asNiceText(p.phase_path) || asNiceText(d.id);
 
@@ -402,6 +443,8 @@
     if (label === "KeyExploitableResult") return 40;
     if (label === "Standard") return 60;
     if (label === "Publication") return 55;
+    if (label === "Gap") return 46;
+    if (label === "Recommendation") return 52;
     if (label === "Phase") return 30;
     if (label === "CircularPath" || label === "Path") return 32;
     return 28;
@@ -445,7 +488,8 @@
       "demonstrations","demonstrations_type",
       "partners","partners_legalname",
       "material","phase_id","phases","phase_path",
-      "standard_code","standard_title"
+      "standard_code","standard_title",
+      "gap_id","gap_name","recommendation_name"
     ];
 
     const skipKeys = new Set([
@@ -942,7 +986,7 @@
       n.removeClass("hidden").style("display","element");
 
       const angle = count === 1 ? 0 : (2 * Math.PI * i) / count;
-      let radius = EXPAND_RADIUS;
+      const radius = EXPAND_RADIUS;
 
       n.position({
         x: center.x + Math.cos(angle) * radius,
@@ -1020,414 +1064,414 @@
       pathA = ele;
       document.getElementById("pathsel").innerHTML =
         `<div class="muted">Selected A: <span class="mono">${ele.data("title")||"Node"}</span><br>Now Shift+click node B.</div>`;
-      return;
-    }
-
-    const now = Date.now();
-    const id = ele.id();
-    const isDouble = (lastTapId === id && (now - lastTapTime) < 350);
-    lastTapTime = now;
-    lastTapId = id;
-
-    if (!isDouble) { showDetails(ele); return; }
-
-    const d = ele.data();
-    if (d.kind === "hub") revealCategory(d.label);
-    else if (d.kind === "real") expandRealNeighbors(ele);
-  }
-
-  function enablePinOnRightClick() {
-    cy.on("cxttap", "node[kind='real']", (evt) => {
-      const n = evt.target;
-      n.lock(!n.locked());
-      showDetails(n);
-    });
-  }
-
-  function rowsNrmToElements(rows) {
-    const nodeMap = new Map();
-    const idMap = new Map();
-    const edgeMap = new Map();
-
-    function addNode(nodeObj) {
-      if (!nodeObj) return null;
-      const cid = neoId(nodeObj);
-      if (!cid) return null;
-
-      if (!nodeMap.has(cid)) {
-        const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
-        const properties = nodeObj.properties || {};
-        nodeMap.set(cid, { data: { id: cid, labels, properties } });
-
-        const numId = getNumericIdentity(nodeObj);
-        if (numId) idMap.set(numId, cid);
+        return;
       }
-      return cid;
+
+      const now = Date.now();
+      const id = ele.id();
+      const isDouble = (lastTapId === id && (now - lastTapTime) < 350);
+      lastTapTime = now;
+      lastTapId = id;
+
+      if (!isDouble) { showDetails(ele); return; }
+
+      const d = ele.data();
+      if (d.kind === "hub") revealCategory(d.label);
+      else if (d.kind === "real") expandRealNeighbors(ele);
     }
 
-    function resolveEndpoint(x) {
-      if (x == null) return null;
-      if (typeof x === "string") return nodeMap.has(x) ? x : (idMap.get(x) || x);
-      if (typeof x === "number") return idMap.get(String(x)) || String(x);
+    function enablePinOnRightClick() {
+      cy.on("cxttap", "node[kind='real']", (evt) => {
+        const n = evt.target;
+        n.lock(!n.locked());
+        showDetails(n);
+      });
+    }
 
-      const cid = neoId(x);
-      if (cid && nodeMap.has(cid)) return cid;
+    function rowsNrmToElements(rows) {
+      const nodeMap = new Map();
+      const idMap = new Map();
+      const edgeMap = new Map();
 
-      const num = getNumericIdentity(x);
-      if (num && idMap.has(num)) return idMap.get(num);
+      function addNode(nodeObj) {
+        if (!nodeObj) return null;
+        const cid = neoId(nodeObj);
+        if (!cid) return null;
 
-      if (x.low != null && idMap.has(String(x.low))) return idMap.get(String(x.low));
+        if (!nodeMap.has(cid)) {
+          const labels = nodeObj.labels || (nodeObj.label ? [nodeObj.label] : []);
+          const properties = nodeObj.properties || {};
+          nodeMap.set(cid, { data: { id: cid, labels, properties } });
+
+          const numId = getNumericIdentity(nodeObj);
+          if (numId) idMap.set(numId, cid);
+        }
+        return cid;
+      }
+
+      function resolveEndpoint(x) {
+        if (x == null) return null;
+        if (typeof x === "string") return nodeMap.has(x) ? x : (idMap.get(x) || x);
+        if (typeof x === "number") return idMap.get(String(x)) || String(x);
+
+        const cid = neoId(x);
+        if (cid && nodeMap.has(cid)) return cid;
+
+        const num = getNumericIdentity(x);
+        if (num && idMap.has(num)) return idMap.get(num);
+
+        if (x.low != null && idMap.has(String(x.low))) return idMap.get(String(x.low));
+        return null;
+      }
+
+      function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
+        if (!relObj) return;
+
+        const rid = neoId(relObj) || `rel_${edgeMap.size}`;
+        const type = relObj.type || relObj.label || relObj.relType || "REL";
+
+        const rawS = relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from ?? relObj.start_id ?? relObj.startId;
+        const rawT = relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to   ?? relObj.end_id   ?? relObj.endId;
+
+        const source = resolveEndpoint(rawS) || fallbackSourceId;
+        const target = resolveEndpoint(rawT) || fallbackTargetId;
+
+        if (!source || !target) return;
+
+        const key = `${rid}|${source}|${target}|${type}`;
+        if (edgeMap.has(key)) return;
+
+        const props = relObj.properties || {};
+        edgeMap.set(key, { data: { id: rid, source, target, type, properties: props } });
+      }
+
+      rows.forEach(row => {
+        const n = row.n || row.from || row.a || row.sourceNode;
+        const m = row.m || row.to   || row.b || row.targetNode;
+        const r = row.r || row.rel  || row.e || row.relationship;
+
+        const nId = addNode(n);
+        const mId = addNode(m);
+
+        Object.values(row).forEach(v => {
+          if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
+        });
+
+        addEdge(r, nId, mId);
+      });
+
+      return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
+    }
+
+    function unwrapAnyNeo4jJson(raw) {
+      if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
+      if (raw?.elements?.nodes && (raw.elements.edges || raw.elements.relationships)) return raw.elements;
+      if (raw?.nodes && (raw?.relationships || raw?.edges)) return { nodes: raw.nodes, edges: raw.relationships || raw.edges };
+      if (Array.isArray(raw) && raw.length && typeof raw[0] === "object") {
+        const el = rowsNrmToElements(raw);
+        return { nodes: el.nodes, edges: el.edges };
+      }
       return null;
     }
 
-    function addEdge(relObj, fallbackSourceId, fallbackTargetId) {
-      if (!relObj) return;
+    async function main() {
+      const res = await fetch("./graph.json", { cache: "no-store" });
+      if (!res.ok) {
+        document.getElementById("details").innerHTML =
+          `<b>Error</b><br><br>Could not load <code>graph.json</code> (${res.status}). Put it next to <code>index.html</code> in the repo root.`;
+        return;
+      }
 
-      const rid = neoId(relObj) || `rel_${edgeMap.size}`;
-      const type = relObj.type || relObj.label || relObj.relType || "REL";
+      const raw = await res.json();
+      const elements = unwrapAnyNeo4jJson(raw);
+      const edgeList = elements?.edges || elements?.relationships;
 
-      const rawS = relObj.startNode ?? relObj.start ?? relObj.source ?? relObj.from ?? relObj.start_id ?? relObj.startId;
-      const rawT = relObj.endNode   ?? relObj.end   ?? relObj.target ?? relObj.to   ?? relObj.end_id   ?? relObj.endId;
+      if (!elements?.nodes || !edgeList) {
+        document.getElementById("details").innerHTML =
+          "<b>Error</b><br><br>graph.json format not recognized. It must contain nodes + relationships OR rows like n/r/m.";
+        return;
+      }
 
-      const source = resolveEndpoint(rawS) || fallbackSourceId;
-      const target = resolveEndpoint(rawT) || fallbackTargetId;
+      let publicationCounter = 1;
 
-      if (!source || !target) return;
+      const realNodes = elements.nodes.map(n => {
+        const d = n.data || n;
+        const labels = Array.isArray(d.labels || (d.data?.labels)) ? (d.labels || (d.data?.labels) || []) : [];
+        const properties = d.properties || (d.data?.properties) || {};
+        const id = d.id || d.elementId || (d.data && d.data.id) || neoId(d);
 
-      const key = `${rid}|${source}|${target}|${type}`;
-      if (edgeMap.has(key)) return;
+        const nodeData = { id: String(id), labels, properties };
+        const label = getPrimaryKnownLabel(labels);
 
-      const props = relObj.properties || {};
-      edgeMap.set(key, { data: { id: rid, source, target, type, properties: props } });
-    }
+        let title = pickNodeLabel(nodeData);
 
-    rows.forEach(row => {
-      const n = row.n || row.from || row.a || row.sourceNode;
-      const m = row.m || row.to   || row.b || row.targetNode;
-      const r = row.r || row.rel  || row.e || row.relationship;
+        if (label === "Publication") {
+          title = `P${publicationCounter++}`;
+        }
 
-      const nId = addNode(n);
-      const mId = addNode(m);
+        let logo = null;
+        if (label === "Innovation") {
+          const innovationName = (properties.innovations_name || "").trim();
+          logo = INNOVATION_LOGOS[innovationName] || INNOVATION_LOGOS[properties.innovations_name] || null;
+        }
 
-      Object.values(row).forEach(v => {
-        if (v && typeof v === "object" && (v.labels || v.properties)) addNode(v);
+        return {
+          data: {
+            ...nodeData,
+            label,
+            title,
+            color: colorForLabel(label),
+            size: sizeForLabel(label),
+            kind: "real",
+            logo
+          }
+        };
       });
 
-      addEdge(r, nId, mId);
-    });
+      const nodeIdSet = new Set(realNodes.map(n => n.data.id));
 
-    return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
-  }
+      const realEdges = edgeList.map(e => {
+        const d = e.data || e;
+        const source = d.source || d.startNode || d.start || d.from || d.start_id || d.startId;
+        const target = d.target || d.endNode || d.end || d.to || d.end_id || d.endId;
 
-  function unwrapAnyNeo4jJson(raw) {
-    if (Array.isArray(raw) && raw[0] && raw[0].json && raw[0].json.elements) return raw[0].json.elements;
-    if (raw?.elements?.nodes && (raw.elements.edges || raw.elements.relationships)) return raw.elements;
-    if (raw?.nodes && (raw?.relationships || raw?.edges)) return { nodes: raw.nodes, edges: raw.relationships || raw.edges };
-    if (Array.isArray(raw) && raw.length && typeof raw[0] === "object") {
-      const el = rowsNrmToElements(raw);
-      return { nodes: el.nodes, edges: el.edges };
-    }
-    return null;
-  }
+        const s = (typeof source === "object") ? neoId(source) : String(source ?? "");
+        const t = (typeof target === "object") ? neoId(target) : String(target ?? "");
 
-  async function main() {
-    const res = await fetch("./graph.json", { cache: "no-store" });
-    if (!res.ok) {
-      document.getElementById("details").innerHTML =
-        `<b>Error</b><br><br>Could not load <code>graph.json</code> (${res.status}). Put it next to <code>index.html</code> in the repo root.`;
-      return;
-    }
+        const id = d.id || d.elementId || neoId(d) || `edge_${Math.random().toString(36).slice(2)}`;
+        const type = d.type || d.label || d.relType || "REL";
+        const props = d.properties || {};
 
-    const raw = await res.json();
-    const elements = unwrapAnyNeo4jJson(raw);
-    const edgeList = elements?.edges || elements?.relationships;
+        return { data: { id: String(id), source: s, target: t, label: type, type, properties: props, kind:"realEdge" } };
+      }).filter(e => e.data.source && e.data.target);
 
-    if (!elements?.nodes || !edgeList) {
-      document.getElementById("details").innerHTML =
-        "<b>Error</b><br><br>graph.json format not recognized. It must contain nodes + relationships OR rows like n/r/m.";
-      return;
-    }
+      const broken = realEdges.filter(e => !nodeIdSet.has(e.data.source) || !nodeIdSet.has(e.data.target));
+      const goodEdges = realEdges.filter(e => nodeIdSet.has(e.data.source) && nodeIdSet.has(e.data.target));
 
-    let publicationCounter = 1;
+      const kerCount = realNodes.filter(n =>
+        n.data.label === "KeyExploitableResult" ||
+        (n.data.labels || []).includes("KeyExploitableResult")
+      ).length;
 
-    const realNodes = elements.nodes.map(n => {
-      const d = n.data || n;
-      const labels = Array.isArray(d.labels || (d.data?.labels)) ? (d.labels || (d.data?.labels) || []) : [];
-      const properties = d.properties || (d.data?.properties) || {};
-      const id = d.id || d.elementId || (d.data && d.data.id) || neoId(d);
+      document.getElementById("debug").innerHTML =
+        `<div class="pill">Loaded nodes: <b>${realNodes.length}</b></div>
+         <div class="pill">Edges in file: <b>${realEdges.length}</b></div>
+         <div class="pill">Drawable edges: <b>${goodEdges.length}</b></div>
+         <div class="pill">KER nodes found: <b>${kerCount}</b></div>
+         ${broken.length ? `<div style="margin-top:8px;" class="muted">⚠️ <b>${broken.length}</b> edges reference missing node ids (id mismatch).</div>` : ""}`;
 
-      const nodeData = { id: String(id), labels, properties };
-      const label = getPrimaryKnownLabel(labels);
+      document.getElementById("stats").innerHTML =
+        `Nodes: <b>${realNodes.length}</b> • Edges: <b>${goodEdges.length}</b>`;
 
-      let title = pickNodeLabel(nodeData);
-
-      if (label === "Publication") {
-        title = `P${publicationCounter++}`;
-      }
-
-      let logo = null;
-      if (label === "Innovation") {
-        const innovationName = (properties.innovations_name || "").trim();
-        logo = INNOVATION_LOGOS[innovationName] || INNOVATION_LOGOS[properties.innovations_name] || null;
-      }
-
-      return {
+      const hubNodes = HUBS.map(h => ({
         data: {
-          ...nodeData,
-          label,
-          title,
-          color: colorForLabel(label),
-          size: sizeForLabel(label),
-          kind: "real",
-          logo
+          id: h.id,
+          label: h.label,
+          title: h.title,
+          color: HUB_COLORS[h.label] || "#B8BFFF",
+          size: 140,
+          kind: "hub",
+          logo: HUB_LOGOS[h.id] || null
         }
-      };
-    });
+      }));
 
-    const nodeIdSet = new Set(realNodes.map(n => n.data.id));
+      cy = cytoscape({
+        container: document.getElementById("cy"),
+        elements: { nodes: [...hubNodes, ...realNodes], edges: goodEdges },
+        style: [
+          { selector: ".hidden", style: { "display": "none" } },
+          { selector: ".dim", style: { "opacity": 0.10 } },
+          { selector: ".hi", style: { "opacity": 1, "shadow-blur": 30, "shadow-opacity": 0.7, "shadow-color": "#ffffff" } },
 
-    const realEdges = edgeList.map(e => {
-      const d = e.data || e;
-      const source = d.source || d.startNode || d.start || d.from || d.start_id || d.startId;
-      const target = d.target || d.endNode || d.end || d.to || d.end_id || d.endId;
+          { selector: ".crumbPathNode", style: { "border-width": 4, "border-color":"rgba(255,255,255,0.55)" } },
+          { selector: "edge.crumbPath", style: { "width": 3, "line-color":"rgba(255,255,255,0.35)", "target-arrow-color":"rgba(255,255,255,0.45)" } },
 
-      const s = (typeof source === "object") ? neoId(source) : String(source ?? "");
-      const t = (typeof target === "object") ? neoId(target) : String(target ?? "");
+          { selector: ".spathNode", style: { "border-width": 4, "border-color":"rgba(0,229,255,0.65)" } },
+          { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
 
-      const id = d.id || d.elementId || neoId(d) || `edge_${Math.random().toString(36).slice(2)}`;
-      const type = d.type || d.label || d.relType || "REL";
-      const props = d.properties || {};
+          {
+            selector: 'node[kind="real"][label="Innovation"]',
+            style: {
+              "background-color":"#ffffff",
+              "background-image":"data(logo)",
+              "background-fit":"contain",
+              "background-width":"90%",
+              "background-height":"90%",
+              "background-position-x":"50%",
+              "background-position-y":"50%",
+              "width":"data(size)",
+              "height":"data(size)",
+              "border-width":2,
+              "border-color":"rgba(255,255,255,0.22)",
+              "label":"data(title)",
+              "color":"#E9ECFF",
+              "font-size":13,
+              "text-wrap":"wrap",
+              "text-max-width":140,
+              "text-outline-width":4,
+              "text-outline-color":"#000",
+              "shadow-blur":16,
+              "shadow-color":"data(color)",
+              "shadow-opacity":0.30
+            }
+          },
+          {
+            selector: 'node[kind="real"]',
+            style: {
+              "background-color":"data(color)",
+              "width":"data(size)",
+              "height":"data(size)",
+              "border-width":2,
+              "border-color":"rgba(255,255,255,0.18)",
+              "label":"data(title)",
+              "color":"#E9ECFF",
+              "font-size":13,
+              "text-wrap":"wrap",
+              "text-max-width":140,
+              "text-outline-width":4,
+              "text-outline-color":"#000",
+              "shadow-blur":16,
+              "shadow-color":"data(color)",
+              "shadow-opacity":0.30
+            }
+          },
+          {
+            selector:'node[kind="hub"]',
+            style:{
+              "shape": "round-rectangle",
+              "width": 140,
+              "height": 140,
+              "background-color": "#ffffff",
+              "background-image": "data(logo)",
+              "background-fit": "contain",
+              "background-width": "72%",
+              "background-height": "72%",
+              "background-position-x": "50%",
+              "background-position-y": "38%",
+              "background-repeat": "no-repeat",
+              "border-width": 4,
+              "border-color": "rgba(233,236,255,0.35)",
+              "label": "data(title)",
+              "color": "#FFF",
+              "font-size": 16,
+              "font-weight": "bold",
+              "text-valign": "bottom",
+              "text-margin-y": 10,
+              "text-outline-width": 5,
+              "text-outline-color": "#000",
+              "shadow-blur": 25,
+              "shadow-color": "data(color)",
+              "shadow-opacity": 0.60
+            }
+          },
 
-      return { data: { id: String(id), source: s, target: t, label: type, type, properties: props, kind:"realEdge" } };
-    }).filter(e => e.data.source && e.data.target);
+          {
+            selector:"edge",
+            style:{
+              "curve-style":"unbundled-bezier",
+              "control-point-distances":46,
+              "control-point-weights":0.5,
+              "line-color":"rgba(200,220,255,0.22)",
+              "width":2,
+              "target-arrow-shape":"triangle",
+              "target-arrow-color":"rgba(200,220,255,0.40)",
+              "label":"",
+              "font-size":10,
+              "color":"rgba(255,255,255,0.92)",
+              "text-outline-width":4,
+              "text-outline-color":"#000",
+              "text-background-opacity":0.70,
+              "text-background-color":"rgba(0,0,0,0.72)",
+              "text-background-padding":"2px",
+              "text-rotation":"autorotate"
+            }
+          },
+          { selector: "edge.show-edge-labels", style: { "label":"data(label)" } },
+          { selector: "edge.edgeLabelOn", style: { "label":"data(label)" } },
 
-    const broken = realEdges.filter(e => !nodeIdSet.has(e.data.source) || !nodeIdSet.has(e.data.target));
-    const goodEdges = realEdges.filter(e => nodeIdSet.has(e.data.source) && nodeIdSet.has(e.data.target));
-
-    const kerCount = realNodes.filter(n =>
-      n.data.label === "KeyExploitableResult" ||
-      (n.data.labels || []).includes("KeyExploitableResult")
-    ).length;
-
-    document.getElementById("debug").innerHTML =
-      `<div class="pill">Loaded nodes: <b>${realNodes.length}</b></div>
-       <div class="pill">Edges in file: <b>${realEdges.length}</b></div>
-       <div class="pill">Drawable edges: <b>${goodEdges.length}</b></div>
-       <div class="pill">KER nodes found: <b>${kerCount}</b></div>
-       ${broken.length ? `<div style="margin-top:8px;" class="muted">⚠️ <b>${broken.length}</b> edges reference missing node ids (id mismatch).</div>` : ""}`;
-
-    document.getElementById("stats").innerHTML =
-      `Nodes: <b>${realNodes.length}</b> • Edges: <b>${goodEdges.length}</b>`;
-
-    const hubNodes = HUBS.map(h => ({
-      data: {
-        id: h.id,
-        label: h.label,
-        title: h.title,
-        color: HUB_COLORS[h.label] || "#B8BFFF",
-        size: 140,
-        kind: "hub",
-        logo: HUB_LOGOS[h.id] || null
-      }
-    }));
-
-    cy = cytoscape({
-      container: document.getElementById("cy"),
-      elements: { nodes: [...hubNodes, ...realNodes], edges: goodEdges },
-      style: [
-        { selector: ".hidden", style: { "display": "none" } },
-        { selector: ".dim", style: { "opacity": 0.10 } },
-        { selector: ".hi", style: { "opacity": 1, "shadow-blur": 30, "shadow-opacity": 0.7, "shadow-color": "#ffffff" } },
-
-        { selector: ".crumbPathNode", style: { "border-width": 4, "border-color":"rgba(255,255,255,0.55)" } },
-        { selector: "edge.crumbPath", style: { "width": 3, "line-color":"rgba(255,255,255,0.35)", "target-arrow-color":"rgba(255,255,255,0.45)" } },
-
-        { selector: ".spathNode", style: { "border-width": 4, "border-color":"rgba(0,229,255,0.65)" } },
-        { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
-
-        {
-          selector: 'node[kind="real"][label="Innovation"]',
-          style: {
-            "background-color":"#ffffff",
-            "background-image":"data(logo)",
-            "background-fit":"contain",
-            "background-width":"90%",
-            "background-height":"90%",
-            "background-position-x":"50%",
-            "background-position-y":"50%",
-            "width":"data(size)",
-            "height":"data(size)",
-            "border-width":2,
-            "border-color":"rgba(255,255,255,0.22)",
-            "label":"data(title)",
-            "color":"#E9ECFF",
-            "font-size":13,
-            "text-wrap":"wrap",
-            "text-max-width":140,
-            "text-outline-width":4,
-            "text-outline-color":"#000",
-            "shadow-blur":16,
-            "shadow-color":"data(color)",
-            "shadow-opacity":0.30
+          {
+            selector:'edge[kind="hubEdge"]',
+            style:{
+              "curve-style":"unbundled-bezier",
+              "control-point-distances":32,
+              "control-point-weights":0.5,
+              "line-color":"rgba(233,236,255,0.22)",
+              "target-arrow-color":"rgba(233,236,255,0.28)",
+              "width":2,
+              "label":""
+            }
           }
-        },
-        {
-          selector: 'node[kind="real"]',
-          style: {
-            "background-color":"data(color)",
-            "width":"data(size)",
-            "height":"data(size)",
-            "border-width":2,
-            "border-color":"rgba(255,255,255,0.18)",
-            "label":"data(title)",
-            "color":"#E9ECFF",
-            "font-size":13,
-            "text-wrap":"wrap",
-            "text-max-width":140,
-            "text-outline-width":4,
-            "text-outline-color":"#000",
-            "shadow-blur":16,
-            "shadow-color":"data(color)",
-            "shadow-opacity":0.30
-          }
-        },
-        {
-          selector:'node[kind="hub"]',
-          style:{
-            "shape": "round-rectangle",
-            "width": 140,
-            "height": 140,
-            "background-color": "#ffffff",
-            "background-image": "data(logo)",
-            "background-fit": "contain",
-            "background-width": "72%",
-            "background-height": "72%",
-            "background-position-x": "50%",
-            "background-position-y": "38%",
-            "background-repeat": "no-repeat",
-            "border-width": 4,
-            "border-color": "rgba(233,236,255,0.35)",
-            "label": "data(title)",
-            "color": "#FFF",
-            "font-size": 16,
-            "font-weight": "bold",
-            "text-valign": "bottom",
-            "text-margin-y": 10,
-            "text-outline-width": 5,
-            "text-outline-color": "#000",
-            "shadow-blur": 25,
-            "shadow-color": "data(color)",
-            "shadow-opacity": 0.60
-          }
-        },
+        ],
+        wheelSensitivity: 0.15,
+        hideEdgesOnViewport: false,
+        textureOnViewport: false,
+        motionBlur: false
+      });
 
-        {
-          selector:"edge",
-          style:{
-            "curve-style":"unbundled-bezier",
-            "control-point-distances":46,
-            "control-point-weights":0.5,
-            "line-color":"rgba(200,220,255,0.22)",
-            "width":2,
-            "target-arrow-shape":"triangle",
-            "target-arrow-color":"rgba(200,220,255,0.40)",
-            "label":"",
-            "font-size":10,
-            "color":"rgba(255,255,255,0.92)",
-            "text-outline-width":4,
-            "text-outline-color":"#000",
-            "text-background-opacity":0.70,
-            "text-background-color":"rgba(0,0,0,0.72)",
-            "text-background-padding":"2px",
-            "text-rotation":"autorotate"
-          }
-        },
-        { selector: "edge.show-edge-labels", style: { "label":"data(label)" } },
-        { selector: "edge.edgeLabelOn", style: { "label":"data(label)" } },
+      setMoveMode(false);
 
-        {
-          selector:'edge[kind="hubEdge"]',
-          style:{
-            "curve-style":"unbundled-bezier",
-            "control-point-distances":32,
-            "control-point-weights":0.5,
-            "line-color":"rgba(233,236,255,0.22)",
-            "target-arrow-color":"rgba(233,236,255,0.28)",
-            "width":2,
-            "label":""
-          }
-        }
-      ],
-      wheelSensitivity: 0.15,
-      hideEdgesOnViewport: false,
-      textureOnViewport: false,
-      motionBlur: false
-    });
+      enableHoverFocus();
+      enablePinOnRightClick();
 
-    setMoveMode(false);
-
-    enableHoverFocus();
-    enablePinOnRightClick();
-
-    cy.on("tap","node",(evt)=>handleTap(evt.target, evt));
-    cy.on("zoom", updateEdgeLabelVisibility);
-    updateEdgeLabelVisibility();
-
-    document.getElementById("btnHome").onclick = () => homeView(true);
-    document.getElementById("btnBack").onclick = () => restorePreviousViewState();
-    document.getElementById("btnCollapse").onclick = () => {
-      if (currentCategory) revealCategory(currentCategory);
-      else homeView(true);
-    };
-    document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
-
-    document.getElementById("btnShowAll").onclick = () => {
-      stopLayout();
-      cy.nodes().unlock();
-
-      cy.nodes().removeClass("hidden filtered");
-      cy.edges().removeClass("hidden");
-      cy.nodes().style("display","element");
-      cy.edges().style("display","element");
-
-      document.getElementById("details").innerHTML =
-        `<div class="muted">All nodes shown. Use filters to reduce clutter.</div>`;
+      cy.on("tap","node",(evt)=>handleTap(evt.target, evt));
+      cy.on("zoom", updateEdgeLabelVisibility);
       updateEdgeLabelVisibility();
-    };
 
-    document.getElementById("btnMove").onclick = () => setMoveMode(!moveMode);
-    document.getElementById("btnClear").onclick = () => clearHighlights({ keepBreadcrumb:true });
+      document.getElementById("btnHome").onclick = () => homeView(true);
+      document.getElementById("btnBack").onclick = () => restorePreviousViewState();
+      document.getElementById("btnCollapse").onclick = () => {
+        if (currentCategory) revealCategory(currentCategory);
+        else homeView(true);
+      };
+      document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
 
-    document.getElementById("search").addEventListener("keydown",(e)=>{
-      if (e.key !== "Enter") return;
-      const q = e.target.value.trim().toLowerCase();
-      if (!q) return;
+      document.getElementById("btnShowAll").onclick = () => {
+        stopLayout();
+        cy.nodes().unlock();
 
-      const hit = cy.nodes().filter(n=>{
-        const d=n.data();
-        if (d.kind!=="real") return false;
-        const vals = Object.values(d.properties || {});
-        return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
-               asNiceText(d.title).toLowerCase().includes(q);
-      }).first();
+        cy.nodes().removeClass("hidden filtered");
+        cy.edges().removeClass("hidden");
+        cy.nodes().style("display","element");
+        cy.edges().style("display","element");
 
-      if (hit && hit.length) {
-        hit.removeClass("hidden").removeClass("filtered").style("display","element");
-        showDetails(hit);
-        cy.animate({ center:{ eles: hit } }, { duration: 200 });
-      }
+        document.getElementById("details").innerHTML =
+          `<div class="muted">All nodes shown. Use filters to reduce clutter.</div>`;
+        updateEdgeLabelVisibility();
+      };
+
+      document.getElementById("btnMove").onclick = () => setMoveMode(!moveMode);
+      document.getElementById("btnClear").onclick = () => clearHighlights({ keepBreadcrumb:true });
+
+      document.getElementById("search").addEventListener("keydown",(e)=>{
+        if (e.key !== "Enter") return;
+        const q = e.target.value.trim().toLowerCase();
+        if (!q) return;
+
+        const hit = cy.nodes().filter(n=>{
+          const d=n.data();
+          if (d.kind!=="real") return false;
+          const vals = Object.values(d.properties || {});
+          return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
+                 asNiceText(d.title).toLowerCase().includes(q);
+        }).first();
+
+        if (hit && hit.length) {
+          hit.removeClass("hidden").removeClass("filtered").style("display","element");
+          showDetails(hit);
+          cy.animate({ center:{ eles: hit } }, { duration: 200 });
+        }
+      });
+
+      buildFiltersFromGraph();
+      cy.nodes('[kind="real"]').forEach(n => expandState.set(n.id(), { shownCount:0, orderedNeighbors:null }));
+
+      homeView(true);
+    }
+
+    main().catch(err => {
+      console.error(err);
+      document.getElementById("details").innerHTML = "<b>Error</b><br><br>" + String(err);
     });
-
-    buildFiltersFromGraph();
-    cy.nodes('[kind="real"]').forEach(n => expandState.set(n.id(), { shownCount:0, orderedNeighbors:null }));
-
-    homeView(true);
-  }
-
-  main().catch(err => {
-    console.error(err);
-    document.getElementById("details").innerHTML = "<b>Error</b><br><br>" + String(err);
-  });
-</script>
+  </script>
 </body>
 </html>
