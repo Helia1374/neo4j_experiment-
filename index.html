@@ -635,23 +635,14 @@
     cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
 
     const nodes = group.toArray();
-    const startAngle = -Math.PI / 2;
-    const perRing = 14;
-    const baseR   = 320;
-    const ringGap = 120;
+    const spacing = 70;
+    const listX = center.x + 220;
+    const startY = center.y - ((nodes.length - 1) * spacing) / 2;
 
-      nodes.forEach((n, i) => {
-  const spacing = 70;                 // vertical gap between nodes
-  const listX = hub.x + 220;         // distance from hub
-  const startY = hub.y - ((nodes.length - 1) * spacing) / 2;
-
-  n.x = listX;
-  n.y = startY + i * spacing;
-});
-
+    nodes.forEach((n, i) => {
       n.position({
-        x: center.x + radius * Math.cos(a),
-        y: center.y + radius * Math.sin(a)
+        x: listX,
+        y: startY + i * spacing
       });
       n.data("_placed", true);
       expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
@@ -1293,7 +1284,6 @@
             "shape": "round-rectangle",
             "width": 120,
             "height": 120,
-
             "background-color": "#ffffff",
             "background-image": "data(logo)",
             "background-fit": "contain",
@@ -1302,20 +1292,16 @@
             "background-position-x": "50%",
             "background-position-y": "38%",
             "background-repeat": "no-repeat",
-
             "border-width": 4,
             "border-color": "rgba(233,236,255,0.35)",
-
             "label": "data(title)",
             "color": "#FFF",
             "font-size": 16,
             "font-weight": "bold",
             "text-valign": "bottom",
             "text-margin-y": 10,
-
             "text-outline-width": 5,
             "text-outline-color": "#000",
-
             "shadow-blur": 25,
             "shadow-color": "data(color)",
             "shadow-opacity": 0.60
