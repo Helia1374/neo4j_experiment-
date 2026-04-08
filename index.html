@@ -154,7 +154,7 @@
         • Right click node = pin/unpin<br>
         • Double click node = expand neighbors<br>
         • Shift+click two real nodes = shortest path highlight<br>
-        • Back = return from expanded view to the clean category view
+        • Back = undo the last expansion step
       </div>
 
       <hr />
@@ -234,6 +234,7 @@
   let runningLayout = null;
   let moveMode = false;
   let currentCategory = null;
+  let viewHistory = [];
 
   const expandState = new Map();
   const breadcrumb = [];
@@ -537,16 +538,73 @@
     runningLayout = null;
   }
 
-  function clearExpandedExtras() {
-    cy.nodes('[kind="expanded"]').remove();
-    cy.edges('[kind="expandedEdge"]').remove();
+  function saveCurrentViewState() {
+    const state = {
+      currentCategory,
+      nodes: cy.nodes().map(n => ({
+        id: n.id(),
+        position: { ...n.position() },
+        hidden: n.hasClass("hidden"),
+        display: n.style("display")
+      })),
+      edges: cy.edges().map(e => ({
+        id: e.id(),
+        hidden: e.hasClass("hidden"),
+        display: e.style("display")
+      })),
+      expandState: Array.from(expandState.entries()).map(([id, st]) => [
+        id,
+        {
+          shownCount: st?.shownCount ?? 0,
+          orderedNeighbors: st?.orderedNeighbors ? [...st.orderedNeighbors] : null
+        }
+      ])
+    };
+
+    viewHistory.push(state);
+  }
+
+  function restorePreviousViewState() {
+    if (!viewHistory.length) return;
+
+    const state = viewHistory.pop();
+    currentCategory = state.currentCategory || null;
+
+    state.nodes.forEach(saved => {
+      const n = cy.getElementById(saved.id);
+      if (!n.length) return;
+
+      n.position(saved.position);
+
+      if (saved.hidden) n.addClass("hidden");
+      else n.removeClass("hidden");
+
+      n.style("display", saved.display);
+    });
+
+    state.edges.forEach(saved => {
+      const e = cy.getElementById(saved.id);
+      if (!e.length) return;
+
+      if (saved.hidden) e.addClass("hidden");
+      else e.removeClass("hidden");
+
+      e.style("display", saved.display);
+    });
+
+    expandState.clear();
+    (state.expandState || []).forEach(([id, st]) => {
+      expandState.set(id, st);
+    });
+
+    updateEdgeLabelVisibility();
   }
 
   function homeView(force=true) {
+    viewHistory = [];
     currentCategory = null;
     stopLayout();
     cy.nodes().unlock();
-    clearExpandedExtras();
     clearHighlights({ keepBreadcrumb:false });
 
     cy.nodes().style("display","element");
@@ -584,6 +642,7 @@
   }
 
   function revealCategory(label) {
+    saveCurrentViewState();
     currentCategory = label;
 
     const hubId = hubIdFor(label);
@@ -591,7 +650,6 @@
 
     stopLayout();
     cy.nodes().unlock();
-    clearExpandedExtras();
     clearHighlights({ keepBreadcrumb:false });
 
     cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -675,11 +733,6 @@
 
     document.getElementById("details").innerHTML =
       `<div class="muted"><b>${label}</b> opened. Nodes shown: <b>${group.length}</b></div>`;
-  }
-
-  function backToCategoryView() {
-    if (!currentCategory) return;
-    revealCategory(currentCategory);
   }
 
   function buildFiltersFromGraph() {
@@ -784,7 +837,7 @@
       if (!curNode.length) continue;
 
       const edges = curNode.connectedEdges().filter(e =>
-        (e.data("kind")==="realEdge" || e.data("kind")==="expandedEdge") &&
+        e.data("kind")==="realEdge" &&
         e.style("display") !== "none"
       );
 
@@ -863,145 +916,83 @@
     return neigh.map(n => n.id());
   }
 
-  function addExpandedNodesAround(centerNode, neighborIds) {
-    clearExpandedExtras();
+  function expandRealNeighbors(node, opts={}) {
+    saveCurrentViewState();
 
-    const center = centerNode.position();
-    const count = neighborIds.length;
-    if (!count) return;
+    cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
+    cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
 
-    const usedPositions = cy.nodes('[kind="real"]').filter(n => n.style("display") !== "none").map(n => n.position());
-    const angleStep = (2 * Math.PI) / count;
+    node.removeClass("hidden").style("display","element");
 
-    neighborIds.forEach((id, i) => {
-      const original = cy.getElementById(id);
-      if (!original.length) return;
+    let st = expandState.get(node.id());
+    if (!st) st = { shownCount: 0, orderedNeighbors: null };
+    if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
 
+    const start = st.shownCount;
+    const end = Math.min(st.orderedNeighbors.length, start + BATCH);
+    const toShowIds = st.orderedNeighbors.slice(0, end);
+
+    const center = node.position();
+    const count = toShowIds.length;
+
+    toShowIds.forEach((id, i) => {
+      const n = cy.getElementById(id);
+      if (!n.length) return;
+
+      n.removeClass("hidden").style("display","element");
+
+      const angle = count === 1 ? 0 : (2 * Math.PI * i) / count;
       let radius = EXPAND_RADIUS;
-      let pos;
-      let placed = false;
 
-      for (let tries = 0; tries < 6 && !placed; tries++) {
-        const angle = i * angleStep;
-        pos = {
-          x: center.x + Math.cos(angle) * radius,
-          y: center.y + Math.sin(angle) * radius
-        };
-
-        const tooClose = usedPositions.some(p => {
-          const dx = p.x - pos.x;
-          const dy = p.y - pos.y;
-          return Math.sqrt(dx * dx + dy * dy) < 90;
-        });
-
-        if (!tooClose) {
-          placed = true;
-        } else {
-          radius += 55;
-        }
-      }
-
-      const cloneId = `EXP_${centerNode.id()}_${id}`;
-
-      cy.add({
-        group: "nodes",
-        data: {
-          ...original.data(),
-          id: cloneId,
-          kind: "expanded",
-          originalId: id
-        },
-        position: pos
+      n.position({
+        x: center.x + Math.cos(angle) * radius,
+        y: center.y + Math.sin(angle) * radius
       });
 
-      cy.add({
-        group: "edges",
-        data: {
-          id: `EXE_${centerNode.id()}_${id}`,
-          source: centerNode.id(),
-          target: cloneId,
-          label: "",
-          kind: "expandedEdge"
-        }
-      });
+      n.data("_placed", true);
     });
+
+    const visibleIds = new Set(toShowIds);
+    visibleIds.add(node.id());
+
+    const allEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
+    allEdges.forEach(e => {
+      const s = e.source().id();
+      const t = e.target().id();
+      const ok = visibleIds.has(s) && visibleIds.has(t);
+
+      e.toggleClass("hidden", !ok);
+      e.style("display", ok ? "element" : "none");
+    });
+
+    st.shownCount = end;
+    expandState.set(node.id(), st);
+
+    pushBreadcrumb(node);
+    showDetails(node);
+    updateEdgeLabelVisibility();
   }
 
-  function expandRealNeighbors(node, opts={}) {
-  cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
-  cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
-
-  node.removeClass("hidden").style("display","element");
-
-  let st = expandState.get(node.id());
-  if (!st) st = { shownCount: 0, orderedNeighbors: null };
-  if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
-
-  const start = st.shownCount;
-  const end = Math.min(st.orderedNeighbors.length, start + BATCH);
-  const toShowIds = st.orderedNeighbors.slice(0, end);
-
-  const center = node.position();
-  const count = toShowIds.length;
-  let radius = 180;
-
-  toShowIds.forEach((id, i) => {
-    const n = cy.getElementById(id);
-    if (!n.length) return;
-
-    n.removeClass("hidden").style("display","element");
-
-    const angle = count === 1 ? 0 : (2 * Math.PI * i) / count;
-
-    n.position({
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius
+  function collapseNeighborhood(node) {
+    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+    edges.forEach(e => {
+      e.addClass("hidden");
+      e.style("display","none");
     });
 
-    n.data("_placed", true);
-  });
+    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
+    neigh.forEach(n => {
+      n.addClass("hidden");
+      n.style("display","none");
+    });
 
-  const visibleIds = new Set(toShowIds);
-  visibleIds.add(node.id());
+    const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
+    st.shownCount = 0;
+    expandState.set(node.id(), st);
 
-  const allEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
-  allEdges.forEach(e => {
-    const s = e.source().id();
-    const t = e.target().id();
-    const ok = visibleIds.has(s) && visibleIds.has(t);
-
-    e.toggleClass("hidden", !ok);
-    e.style("display", ok ? "element" : "none");
-  });
-
-  st.shownCount = end;
-  expandState.set(node.id(), st);
-
-  pushBreadcrumb(node);
-  showDetails(node);
-  updateEdgeLabelVisibility();
-}
-
-  function collapseNeighborhood(node) {
-  const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-  edges.forEach(e => {
-    e.addClass("hidden");
-    e.style("display","none");
-  });
-
-  const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
-  neigh.forEach(n => {
-    n.addClass("hidden");
-    n.style("display","none");
-  });
-
-  const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
-  st.shownCount = 0;
-  expandState.set(node.id(), st);
-
-  node.removeClass("hidden").style("display","element");
-  showDetails(node);
-}
+    node.removeClass("hidden").style("display","element");
+    showDetails(node);
+  }
 
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
@@ -1013,9 +1004,7 @@
   let lastTapId = null;
 
   function handleTap(ele, evt) {
-    const kind = ele.data("kind");
-
-    if (evt && evt.originalEvent && evt.originalEvent.shiftKey && (kind==="real" || kind==="expanded")) {
+    if (evt && evt.originalEvent && evt.originalEvent.shiftKey && ele.data("kind")==="real") {
       if (!pathA) {
         pathA = ele;
         document.getElementById("pathsel").innerHTML =
@@ -1048,7 +1037,7 @@
   }
 
   function enablePinOnRightClick() {
-    cy.on("cxttap", "node[kind='real'], node[kind='expanded']", (evt) => {
+    cy.on("cxttap", "node[kind='real']", (evt) => {
       const n = evt.target;
       n.lock(!n.locked());
       showDetails(n);
@@ -1257,7 +1246,7 @@
         { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
 
         {
-          selector: 'node[kind="real"][label="Innovation"], node[kind="expanded"][label="Innovation"]',
+          selector: 'node[kind="real"][label="Innovation"]',
           style: {
             "background-color":"#ffffff",
             "background-image":"data(logo)",
@@ -1283,7 +1272,7 @@
           }
         },
         {
-          selector: 'node[kind="real"], node[kind="expanded"]',
+          selector: 'node[kind="real"]',
           style: {
             "background-color":"data(color)",
             "width":"data(size)",
@@ -1367,16 +1356,6 @@
             "width":2,
             "label":""
           }
-        },
-        {
-          selector:'edge[kind="expandedEdge"]',
-          style:{
-            "curve-style":"bezier",
-            "line-color":"rgba(255,255,255,0.25)",
-            "target-arrow-color":"rgba(255,255,255,0.28)",
-            "width":2,
-            "label":""
-          }
         }
       ],
       wheelSensitivity: 0.15,
@@ -1395,16 +1374,15 @@
     updateEdgeLabelVisibility();
 
     document.getElementById("btnHome").onclick = () => homeView(true);
-    document.getElementById("btnBack").onclick = () => backToCategoryView();
+    document.getElementById("btnBack").onclick = () => restorePreviousViewState();
     document.getElementById("btnCollapse").onclick = () => {
-      if (currentCategory) backToCategoryView();
+      if (currentCategory) revealCategory(currentCategory);
       else homeView(true);
     };
     document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
 
     document.getElementById("btnShowAll").onclick = () => {
       stopLayout();
-      clearExpandedExtras();
       cy.nodes().unlock();
 
       cy.nodes().removeClass("hidden filtered");
@@ -1427,7 +1405,7 @@
 
       const hit = cy.nodes().filter(n=>{
         const d=n.data();
-        if (d.kind!=="real" && d.kind!=="expanded") return false;
+        if (d.kind!=="real") return false;
         const vals = Object.values(d.properties || {});
         return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
                asNiceText(d.title).toLowerCase().includes(q);
