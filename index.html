@@ -127,6 +127,7 @@
     <div style="font-weight:700;">⚡ Graph Explorer</div>
 
     <div class="btn" id="btnHome">Home</div>
+    <div class="btn" id="btnBack">Back</div>
     <div class="btn" id="btnCollapse">Collapse</div>
     <div class="btn" id="btnShowAll">Show all</div>
     <div class="btn" id="btnFit">Fit</div>
@@ -152,7 +153,8 @@
         • Move OFF = click/select without dragging<br>
         • Right click node = pin/unpin<br>
         • Double click node = expand neighbors<br>
-        • Shift+click two real nodes = shortest path highlight
+        • Shift+click two real nodes = shortest path highlight<br>
+        • Back = return from expanded view to the clean category view
       </div>
 
       <hr />
@@ -225,14 +227,13 @@
   };
 
   const BATCH = 12;
-  const SEED_RADIUS = 110;
-  const SEED_JITTER = 28;
-  const LOCAL_HOPS = 2;
   const EDGE_LABEL_ZOOM = 1.05;
+  const EXPAND_RADIUS = 180;
 
   let cy;
   let runningLayout = null;
   let moveMode = false;
+  let currentCategory = null;
 
   const expandState = new Map();
   const breadcrumb = [];
@@ -391,18 +392,18 @@
   }
 
   function sizeForLabel(label) {
-    if (label === "Material") return 24;
-    if (label === "ValueChainStage") return 23;
-    if (label === "Partner") return 24;
-    if (label === "Deliverable") return 22;
-    if (label === "Demonstration") return 21;
-    if (label === "Innovation") return 21;
-    if (label === "KeyExploitableResult") return 21;
-    if (label === "Standard") return 36;
-    if (label === "Publication") return 30;
-    if (label === "Phase") return 18;
-    if (label === "CircularPath" || label === "Path") return 20;
-    return 16;
+    if (label === "Material") return 42;
+    if (label === "ValueChainStage") return 40;
+    if (label === "Partner") return 42;
+    if (label === "Deliverable") return 38;
+    if (label === "Demonstration") return 38;
+    if (label === "Innovation") return 50;
+    if (label === "KeyExploitableResult") return 40;
+    if (label === "Standard") return 60;
+    if (label === "Publication") return 55;
+    if (label === "Phase") return 30;
+    if (label === "CircularPath" || label === "Path") return 32;
+    return 28;
   }
 
   function colorForLabel(label) {
@@ -536,9 +537,16 @@
     runningLayout = null;
   }
 
+  function clearExpandedExtras() {
+    cy.nodes('[kind="expanded"]').remove();
+    cy.edges('[kind="expandedEdge"]').remove();
+  }
+
   function homeView(force=true) {
+    currentCategory = null;
     stopLayout();
     cy.nodes().unlock();
+    clearExpandedExtras();
     clearHighlights({ keepBreadcrumb:false });
 
     cy.nodes().style("display","element");
@@ -576,11 +584,14 @@
   }
 
   function revealCategory(label) {
+    currentCategory = label;
+
     const hubId = hubIdFor(label);
     if (!hubId) return;
 
     stopLayout();
     cy.nodes().unlock();
+    clearExpandedExtras();
     clearHighlights({ keepBreadcrumb:false });
 
     cy.nodes('[kind="real"]').addClass("hidden").data("_placed", false);
@@ -635,29 +646,40 @@
     cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
 
     const nodes = group.toArray();
-const radius = 280;
-const arcStart = -Math.PI / 2.2;
-const arcEnd = Math.PI / 2.2;
+    const count = nodes.length;
+    const useFullCircle = count > 18;
+    const radius = count > 20 ? 420 : 320;
 
-nodes.forEach((n, i) => {
-  const angle = nodes.length === 1
-    ? 0
-    : arcStart + (i / (nodes.length - 1)) * (arcEnd - arcStart);
+    nodes.forEach((n, i) => {
+      let angle;
 
-  n.position({
-    x: center.x + radius * Math.cos(angle),
-    y: center.y + radius * Math.sin(angle)
-  });
+      if (useFullCircle) {
+        angle = (2 * Math.PI * i) / Math.max(count, 1);
+      } else {
+        const arcStart = -Math.PI / 2.2;
+        const arcEnd = Math.PI / 2.2;
+        angle = count === 1 ? 0 : arcStart + (i / (count - 1)) * (arcEnd - arcStart);
+      }
 
-  n.data("_placed", true);
-  expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
-});
+      n.position({
+        x: center.x + radius * Math.cos(angle),
+        y: center.y + radius * Math.sin(angle)
+      });
+
+      n.data("_placed", true);
+      expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
+    });
 
     applyFilters();
-    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 80);
+    cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 100);
 
     document.getElementById("details").innerHTML =
       `<div class="muted"><b>${label}</b> opened. Nodes shown: <b>${group.length}</b></div>`;
+  }
+
+  function backToCategoryView() {
+    if (!currentCategory) return;
+    revealCategory(currentCategory);
   }
 
   function buildFiltersFromGraph() {
@@ -762,7 +784,7 @@ nodes.forEach((n, i) => {
       if (!curNode.length) continue;
 
       const edges = curNode.connectedEdges().filter(e =>
-        e.data("kind")==="realEdge" &&
+        (e.data("kind")==="realEdge" || e.data("kind")==="expandedEdge") &&
         e.style("display") !== "none"
       );
 
@@ -830,53 +852,6 @@ nodes.forEach((n, i) => {
     }
   }
 
-  function localSubgraphAround(node, hops=2) {
-    let s = node;
-    for (let i=0; i<hops; i++) s = s.closedNeighborhood();
-    const nodes = s.nodes().filter(n => n.data("kind")==="real" && n.style("display") !== "none");
-    const edges = s.edges().filter(e => e.data("kind")==="realEdge" && e.style("display") !== "none");
-    return nodes.union(edges);
-  }
-
-  function lockOutsideLocal(centerNode) {
-    const local = localSubgraphAround(centerNode, LOCAL_HOPS);
-    cy.nodes('[kind="real"]').forEach(n => {
-      if (n.style("display")==="none") return;
-      if (n.locked()) return;
-      if (local.contains(n)) n.unlock();
-      else n.lock();
-    });
-  }
-
-  function runLocalPhysics(centerNode) {
-    stopLayout();
-    const eles = localSubgraphAround(centerNode, LOCAL_HOPS);
-    if (eles.length < 2) return;
-
-    runningLayout = cy.layout({
-      name: "fcose",
-      eles,
-      animate: true,
-      animationDuration: 420,
-      fit: false,
-      padding: 40,
-      quality: "default",
-      randomize: false,
-      nodeRepulsion: 9000,
-      idealEdgeLength: 130,
-      edgeElasticity: 0.45,
-      gravity: 0.28,
-      nodeDimensionsIncludeLabels: true,
-      packComponents: true,
-      fixedNodeConstraint: [{
-        nodeId: centerNode.id(),
-        position: centerNode.position()
-      }]
-    });
-
-    runningLayout.run();
-  }
-
   function getOrderedNeighbors(node) {
     const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
     const neigh = edges.connectedNodes().filter(n => n.id() !== node.id()).toArray();
@@ -888,16 +863,67 @@ nodes.forEach((n, i) => {
     return neigh.map(n => n.id());
   }
 
-  function seedNewNodesAround(centerNode, newNodes) {
-    const c = centerNode.position();
-    newNodes.forEach((n, i) => {
-      if (n.data("_placed")) return;
-      const angle = -Math.PI/2 + (2*Math.PI*i)/Math.max(newNodes.length, 1);
-      n.position({
-        x: c.x + Math.cos(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER,
-        y: c.y + Math.sin(angle) * (SEED_RADIUS + Math.random()*40) + (Math.random()-0.5)*SEED_JITTER
+  function addExpandedNodesAround(centerNode, neighborIds) {
+    clearExpandedExtras();
+
+    const center = centerNode.position();
+    const count = neighborIds.length;
+    if (!count) return;
+
+    const usedPositions = cy.nodes('[kind="real"]').filter(n => n.style("display") !== "none").map(n => n.position());
+    const angleStep = (2 * Math.PI) / count;
+
+    neighborIds.forEach((id, i) => {
+      const original = cy.getElementById(id);
+      if (!original.length) return;
+
+      let radius = EXPAND_RADIUS;
+      let pos;
+      let placed = false;
+
+      for (let tries = 0; tries < 6 && !placed; tries++) {
+        const angle = i * angleStep;
+        pos = {
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius
+        };
+
+        const tooClose = usedPositions.some(p => {
+          const dx = p.x - pos.x;
+          const dy = p.y - pos.y;
+          return Math.sqrt(dx * dx + dy * dy) < 90;
+        });
+
+        if (!tooClose) {
+          placed = true;
+        } else {
+          radius += 55;
+        }
+      }
+
+      const cloneId = `EXP_${centerNode.id()}_${id}`;
+
+      cy.add({
+        group: "nodes",
+        data: {
+          ...original.data(),
+          id: cloneId,
+          kind: "expanded",
+          originalId: id
+        },
+        position: pos
       });
-      n.data("_placed", true);
+
+      cy.add({
+        group: "edges",
+        data: {
+          id: `EXE_${centerNode.id()}_${id}`,
+          source: centerNode.id(),
+          target: cloneId,
+          label: "",
+          kind: "expandedEdge"
+        }
+      });
     });
   }
 
@@ -913,47 +939,9 @@ nodes.forEach((n, i) => {
 
     const start = st.shownCount;
     const end = Math.min(st.orderedNeighbors.length, start + BATCH);
+    const toShowIds = st.orderedNeighbors.slice(start, end);
 
-    const toShowIds = st.orderedNeighbors.slice(0, end);
-    const newlyShown = [];
-
-    toShowIds.forEach(id => {
-      const n = cy.getElementById(id);
-      if (!n.length) return;
-
-      const lbl = n.data("label") || "Other";
-      const on = enabledLabels.get(lbl) !== false;
-
-      const wasHidden = (n.style("display")==="none");
-      n.removeClass("hidden");
-      n.toggleClass("filtered", !on);
-      n.style("display", on ? "element" : "none");
-
-      if (wasHidden && on) newlyShown.push(n);
-    });
-
-    const visibleIds = new Set(toShowIds);
-    visibleIds.add(node.id());
-
-    const allEdges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-    allEdges.forEach(e => {
-      const s = e.source().id();
-      const t = e.target().id();
-      const ok = visibleIds.has(s) && visibleIds.has(t);
-
-      e.toggleClass("hidden", !ok);
-      if (!ok) e.style("display","none");
-      else {
-        const sv = e.source().style("display") !== "none";
-        const tv = e.target().style("display") !== "none";
-        e.style("display", (sv && tv) ? "element" : "none");
-      }
-    });
-
-    seedNewNodesAround(node, newlyShown);
-
-    lockOutsideLocal(node);
-    runLocalPhysics(node);
+    addExpandedNodesAround(node, toShowIds);
 
     st.shownCount = end;
     expandState.set(node.id(), st);
@@ -963,25 +951,11 @@ nodes.forEach((n, i) => {
   }
 
   function collapseNeighborhood(node) {
-    stopLayout();
-
-    const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
-    edges.forEach(e => { e.addClass("hidden"); e.style("display","none"); });
-
-    const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
-    neigh.forEach(n => {
-      const stillHasVisible = n.connectedEdges().filter(e => e.data("kind")==="realEdge" && e.style("display")!=="none").length > 0;
-      if (!stillHasVisible && !n.locked()) {
-        n.addClass("hidden");
-        n.style("display","none");
-      }
-    });
+    clearExpandedExtras();
 
     const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
     st.shownCount = 0;
     expandState.set(node.id(), st);
-
-    cy.nodes('[kind="real"]').forEach(n => { if (!n.locked()) n.unlock(); });
 
     showDetails(node);
   }
@@ -996,7 +970,9 @@ nodes.forEach((n, i) => {
   let lastTapId = null;
 
   function handleTap(ele, evt) {
-    if (evt && evt.originalEvent && evt.originalEvent.shiftKey && ele.data("kind")==="real") {
+    const kind = ele.data("kind");
+
+    if (evt && evt.originalEvent && evt.originalEvent.shiftKey && (kind==="real" || kind==="expanded")) {
       if (!pathA) {
         pathA = ele;
         document.getElementById("pathsel").innerHTML =
@@ -1025,11 +1001,11 @@ nodes.forEach((n, i) => {
 
     const d = ele.data();
     if (d.kind === "hub") revealCategory(d.label);
-    else expandRealNeighbors(ele);
+    else if (d.kind === "real") expandRealNeighbors(ele);
   }
 
   function enablePinOnRightClick() {
-    cy.on("cxttap", "node[kind='real']", (evt) => {
+    cy.on("cxttap", "node[kind='real'], node[kind='expanded']", (evt) => {
       const n = evt.target;
       n.lock(!n.locked());
       showDetails(n);
@@ -1217,7 +1193,7 @@ nodes.forEach((n, i) => {
         label: h.label,
         title: h.title,
         color: HUB_COLORS[h.label] || "#B8BFFF",
-        size: 125,
+        size: 140,
         kind: "hub",
         logo: HUB_LOGOS[h.id] || null
       }
@@ -1238,7 +1214,7 @@ nodes.forEach((n, i) => {
         { selector: "edge.spath", style: { "width": 4, "line-color":"rgba(0,229,255,0.50)", "target-arrow-color":"rgba(0,229,255,0.65)" } },
 
         {
-          selector: 'node[kind="real"][label="Innovation"]',
+          selector: 'node[kind="real"][label="Innovation"], node[kind="expanded"][label="Innovation"]',
           style: {
             "background-color":"#ffffff",
             "background-image":"data(logo)",
@@ -1247,15 +1223,15 @@ nodes.forEach((n, i) => {
             "background-height":"90%",
             "background-position-x":"50%",
             "background-position-y":"50%",
-            "width":55,
-            "height":55,
+            "width":"data(size)",
+            "height":"data(size)",
             "border-width":2,
             "border-color":"rgba(255,255,255,0.22)",
             "label":"data(title)",
             "color":"#E9ECFF",
-            "font-size":12,
+            "font-size":13,
             "text-wrap":"wrap",
-            "text-max-width":120,
+            "text-max-width":140,
             "text-outline-width":4,
             "text-outline-color":"#000",
             "shadow-blur":16,
@@ -1264,7 +1240,7 @@ nodes.forEach((n, i) => {
           }
         },
         {
-          selector: 'node[kind="real"]',
+          selector: 'node[kind="real"], node[kind="expanded"]',
           style: {
             "background-color":"data(color)",
             "width":"data(size)",
@@ -1273,9 +1249,9 @@ nodes.forEach((n, i) => {
             "border-color":"rgba(255,255,255,0.18)",
             "label":"data(title)",
             "color":"#E9ECFF",
-            "font-size":11,
+            "font-size":13,
             "text-wrap":"wrap",
-            "text-max-width":90,
+            "text-max-width":140,
             "text-outline-width":4,
             "text-outline-color":"#000",
             "shadow-blur":16,
@@ -1287,8 +1263,8 @@ nodes.forEach((n, i) => {
           selector:'node[kind="hub"]',
           style:{
             "shape": "round-rectangle",
-            "width": 120,
-            "height": 120,
+            "width": 140,
+            "height": 140,
             "background-color": "#ffffff",
             "background-image": "data(logo)",
             "background-fit": "contain",
@@ -1348,6 +1324,16 @@ nodes.forEach((n, i) => {
             "width":2,
             "label":""
           }
+        },
+        {
+          selector:'edge[kind="expandedEdge"]',
+          style:{
+            "curve-style":"bezier",
+            "line-color":"rgba(255,255,255,0.25)",
+            "target-arrow-color":"rgba(255,255,255,0.28)",
+            "width":2,
+            "label":""
+          }
         }
       ],
       wheelSensitivity: 0.15,
@@ -1366,11 +1352,16 @@ nodes.forEach((n, i) => {
     updateEdgeLabelVisibility();
 
     document.getElementById("btnHome").onclick = () => homeView(true);
-    document.getElementById("btnCollapse").onclick = () => homeView(true);
+    document.getElementById("btnBack").onclick = () => backToCategoryView();
+    document.getElementById("btnCollapse").onclick = () => {
+      if (currentCategory) backToCategoryView();
+      else homeView(true);
+    };
     document.getElementById("btnFit").onclick = () => cy.fit(undefined, 30);
 
     document.getElementById("btnShowAll").onclick = () => {
       stopLayout();
+      clearExpandedExtras();
       cy.nodes().unlock();
 
       cy.nodes().removeClass("hidden filtered");
@@ -1393,7 +1384,7 @@ nodes.forEach((n, i) => {
 
       const hit = cy.nodes().filter(n=>{
         const d=n.data();
-        if (d.kind!=="real") return false;
+        if (d.kind!=="real" && d.kind!=="expanded") return false;
         const vals = Object.values(d.properties || {});
         return vals.some(v => asNiceText(v).toLowerCase().includes(q)) ||
                asNiceText(d.title).toLowerCase().includes(q);
