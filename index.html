@@ -928,37 +928,80 @@
   }
 
   function expandRealNeighbors(node, opts={}) {
-    cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
-    cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
+  cy.nodes('[kind="hub"]').addClass("hidden").style("display","none");
+  cy.edges('[kind="hubEdge"]').addClass("hidden").style("display","none");
 
-    node.removeClass("hidden").style("display","element");
+  node.removeClass("hidden").style("display","element");
 
-    let st = expandState.get(node.id());
-    if (!st) st = { shownCount: 0, orderedNeighbors: null };
-    if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
+  let st = expandState.get(node.id());
+  if (!st) st = { shownCount: 0, orderedNeighbors: null };
+  if (!st.orderedNeighbors) st.orderedNeighbors = getOrderedNeighbors(node);
 
-    const start = st.shownCount;
-    const end = Math.min(st.orderedNeighbors.length, start + BATCH);
-    const toShowIds = st.orderedNeighbors.slice(start, end);
+  const start = st.shownCount;
+  const end = Math.min(st.orderedNeighbors.length, start + BATCH);
+  const toShowIds = st.orderedNeighbors.slice(0, end);
 
-    addExpandedNodesAround(node, toShowIds);
+  const center = node.position();
+  const count = toShowIds.length;
+  let radius = 180;
 
-    st.shownCount = end;
-    expandState.set(node.id(), st);
+  toShowIds.forEach((id, i) => {
+    const n = cy.getElementById(id);
+    if (!n.length) return;
 
-    pushBreadcrumb(node);
-    showDetails(node);
-  }
+    n.removeClass("hidden").style("display","element");
+
+    const angle = count === 1 ? 0 : (2 * Math.PI * i) / count;
+
+    n.position({
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius
+    });
+
+    n.data("_placed", true);
+  });
+
+  const visibleIds = new Set(toShowIds);
+  visibleIds.add(node.id());
+
+  const allEdges = node.connectedEdges().filter(e => e.data("kind") === "realEdge");
+  allEdges.forEach(e => {
+    const s = e.source().id();
+    const t = e.target().id();
+    const ok = visibleIds.has(s) && visibleIds.has(t);
+
+    e.toggleClass("hidden", !ok);
+    e.style("display", ok ? "element" : "none");
+  });
+
+  st.shownCount = end;
+  expandState.set(node.id(), st);
+
+  pushBreadcrumb(node);
+  showDetails(node);
+  updateEdgeLabelVisibility();
+}
 
   function collapseNeighborhood(node) {
-    clearExpandedExtras();
+  const edges = node.connectedEdges().filter(e => e.data("kind")==="realEdge");
+  edges.forEach(e => {
+    e.addClass("hidden");
+    e.style("display","none");
+  });
 
-    const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
-    st.shownCount = 0;
-    expandState.set(node.id(), st);
+  const neigh = edges.connectedNodes().filter(n => n.id() !== node.id());
+  neigh.forEach(n => {
+    n.addClass("hidden");
+    n.style("display","none");
+  });
 
-    showDetails(node);
-  }
+  const st = expandState.get(node.id()) || { shownCount:0, orderedNeighbors:null };
+  st.shownCount = 0;
+  expandState.set(node.id(), st);
+
+  node.removeClass("hidden").style("display","element");
+  showDetails(node);
+}
 
   function updateEdgeLabelVisibility() {
     const z = cy.zoom();
