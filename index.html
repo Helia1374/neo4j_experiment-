@@ -635,18 +635,23 @@
     cy.edges('[kind="hubEdge"]').removeClass("hidden").style("display","element");
 
     const nodes = group.toArray();
-    const spacing = 70;
-    const listX = center.x + 220;
-    const startY = center.y - ((nodes.length - 1) * spacing) / 2;
+const radius = 280;
+const arcStart = -Math.PI / 2.2;
+const arcEnd = Math.PI / 2.2;
 
-    nodes.forEach((n, i) => {
-      n.position({
-        x: listX,
-        y: startY + i * spacing
-      });
-      n.data("_placed", true);
-      expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
-    });
+nodes.forEach((n, i) => {
+  const angle = nodes.length === 1
+    ? 0
+    : arcStart + (i / (nodes.length - 1)) * (arcEnd - arcStart);
+
+  n.position({
+    x: center.x + radius * Math.cos(angle),
+    y: center.y + radius * Math.sin(angle)
+  });
+
+  n.data("_placed", true);
+  expandState.set(n.id(), { shownCount: 0, orderedNeighbors: null });
+});
 
     applyFilters();
     cy.fit(cy.elements().filter(e => e.style("display") !== "none"), 80);
