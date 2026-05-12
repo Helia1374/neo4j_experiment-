@@ -142,7 +142,7 @@
       <div class="sectionTitle">Controls</div>
       <div class="muted">
         • Double click Material = show value-chain stages only<br>
-        • Double click Stage = show phases / circular paths / related actors<br>
+        • Double click Stage = focus only on that stage and its connected phases<br>
         • Double click Circular Path = show phases only<br>
         • Double click Phase = show innovations, demos, partners and nearby phases<br>
         • Back = undo last expansion
@@ -320,11 +320,7 @@
     const p = d.properties || {};
 
     if (label === "Material") return asNiceText(p.name) || asNiceText(p.material) || asNiceText(d.id);
-    if (label === "ValueChainStage") {
-      const stage = asNiceText(p.name);
-      const mat = asNiceText(p.material);
-      return stage || mat || asNiceText(d.id);
-    }
+    if (label === "ValueChainStage") return asNiceText(p.name) || asNiceText(p.material) || asNiceText(d.id);
     if (label === "Partner") return asNiceText(p.partners) || asNiceText(p.partners_legalname) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
     if (label === "Demonstration") return asNiceText(p.name) || asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
@@ -703,11 +699,11 @@
     if (label === "Material") {
       allowedLabels = ["ValueChainStage"];
     } else if (label === "ValueChainStage") {
-      allowedLabels = ["Phase", "CircularPath", "Innovation", "Demonstration", "Partner"];
+      allowedLabels = ["Phase", "CircularPath", "Innovation", "Demonstration", "Partner", "ValueChainStage"];
     } else if (label === "CircularPath") {
       allowedLabels = ["Phase"];
     } else if (label === "Phase") {
-      allowedLabels = ["Innovation", "Demonstration", "Partner", "Phase"];
+      allowedLabels = ["Innovation", "Demonstration", "Partner", "Phase", "ValueChainStage", "CircularPath"];
     }
 
     let neigh = node.connectedEdges()
@@ -754,6 +750,13 @@
     return 999;
   }
 
+  function getPhaseNumber(n) {
+    const p = n.data("properties") || {};
+    const id = String(p.phase_id || n.data("title") || "");
+    const match = id.match(/(\d+)/);
+    return match ? Number(match[1]) : 9999;
+  }
+
   function layoutSmartExpansion(centerNode, nodes) {
     const label = centerNode.data("label");
     const center = centerNode.position();
@@ -782,19 +785,32 @@
 
     if (label === "ValueChainStage") {
       const phaseNodes = nodes.filter(n => n.data("label") === "Phase");
-      const otherNodes = nodes.filter(n => n.data("label") !== "Phase");
+      const stageNodes = nodes.filter(n => n.data("label") === "ValueChainStage");
+      const otherNodes = nodes.filter(n =>
+        n.data("label") !== "Phase" &&
+        n.data("label") !== "ValueChainStage"
+      );
 
-      const spacing = 120;
-      const startX = center.x - ((phaseNodes.length - 1) * spacing) / 2;
+      phaseNodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
+
+      const phaseSpacing = 130;
+      const startX = center.x - ((phaseNodes.length - 1) * phaseSpacing) / 2;
 
       phaseNodes.forEach((n, i) => {
         n.position({
-          x: startX + i * spacing,
-          y: center.y + 220
+          x: startX + i * phaseSpacing,
+          y: center.y + 230
         });
       });
 
-      const radius = 220;
+      stageNodes.forEach((n, i) => {
+        n.position({
+          x: center.x + (i === 0 ? -220 : 220),
+          y: center.y
+        });
+      });
+
+      const radius = 230;
       otherNodes.forEach((n, i) => {
         const angle = (-Math.PI / 2) + (2 * Math.PI * i) / Math.max(otherNodes.length, 1);
         n.position({
@@ -807,13 +823,9 @@
     }
 
     if (label === "CircularPath") {
-      nodes.sort((a,b) => {
-        const ap = a.data("properties") || {};
-        const bp = b.data("properties") || {};
-        return asNiceText(ap.phase_id).localeCompare(asNiceText(bp.phase_id), undefined, { numeric:true });
-      });
+      nodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
 
-      const spacing = 120;
+      const spacing = 130;
       const startX = center.x - ((nodes.length - 1) * spacing) / 2;
 
       nodes.forEach((n, i) => {
@@ -847,6 +859,24 @@
 
     node.removeClass("hidden").style("display","element");
 
+    const nodeLabel = node.data("label");
+
+    /*
+      IMPORTANT CLEANUP:
+      When a ValueChainStage is expanded, all other stage nodes are hidden.
+      This removes the floating/disconnected stage nodes that were making
+      the graph look messy.
+    */
+    if (nodeLabel === "ValueChainStage") {
+      cy.nodes('[label="ValueChainStage"]').forEach(n => {
+        n.addClass("hidden");
+        n.style("display","none");
+      });
+
+      node.removeClass("hidden");
+      node.style("display","element");
+    }
+
     const toShowIds = getSmartNeighborIds(node);
     const visibleIds = new Set(toShowIds);
     visibleIds.add(node.id());
@@ -867,6 +897,7 @@
     cy.edges('[kind="realEdge"]').forEach(e => {
       const s = e.source().id();
       const t = e.target().id();
+
       const ok = visibleIds.has(s) && visibleIds.has(t);
 
       e.toggleClass("hidden", !ok);
