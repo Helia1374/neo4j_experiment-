@@ -531,10 +531,21 @@
   function getSmartNeighborIds(node) {
     const label = node.data("label");
     let allowedLabels = null;
-    if (label === "Material") allowedLabels = ["ValueChainStage"];
-    else if (label === "ValueChainStage") allowedLabels = ["Phase", "CircularPath", "Innovation", "Demonstration", "Partner", "ValueChainStage"];
-    else if (label === "CircularPath") allowedLabels = ["Phase"];
-    else if (label === "Phase") allowedLabels = ["Innovation", "Demonstration", "Partner", "Phase", "ValueChainStage", "CircularPath"];
+
+    if (label === "Material") {
+      allowedLabels = ["ValueChainStage"];
+    } else if (label === "ValueChainStage") {
+      // Stage view: show only its phases, circular paths, innovations, demos, partners.
+      // Do NOT show all other stages here.
+      allowedLabels = ["Phase", "CircularPath", "Innovation", "Demonstration", "Partner"];
+    } else if (label === "CircularPath") {
+      // Circular path view: show only the phases inside that circular path.
+      allowedLabels = ["Phase"];
+    } else if (label === "Phase") {
+      // Phase view: show only direct phase sequence + connected evidence/actors.
+      // Do NOT keep stage nodes here.
+      allowedLabels = ["Phase", "Innovation", "Demonstration", "Partner"];
+    }
 
     let neigh = node.connectedEdges()
       .filter(e => e.data("kind") === "realEdge")
@@ -604,12 +615,8 @@
   function focusMaterialContext(node) {
     const material = materialNameForNode(node);
 
-    cy.nodes('[label="Material"]').forEach(n => {
-      n.addClass("hidden");
-      n.style("display","none");
-    });
-
-    cy.nodes('[label="ValueChainStage"]').forEach(n => {
+    // Full clean view: when a material opens, hide all unrelated real nodes first.
+    cy.nodes('[kind="real"]').forEach(n => {
       n.addClass("hidden");
       n.style("display","none");
     });
@@ -625,12 +632,28 @@
   }
 
   function focusStageContext(node) {
-    cy.nodes('[label="ValueChainStage"]').forEach(n => {
+    // Full clean view: when a stage opens, hide everything except this stage and its direct neighbors.
+    cy.nodes('[kind="real"]').forEach(n => {
       n.addClass("hidden");
       n.style("display","none");
     });
 
-    cy.nodes('[label="Material"]').forEach(n => {
+    node.removeClass("hidden").style("display","element");
+  }
+
+  function focusPhaseContext(node) {
+    // Full clean view: when a phase opens, hide stages and previous unrelated nodes.
+    cy.nodes('[kind="real"]').forEach(n => {
+      n.addClass("hidden");
+      n.style("display","none");
+    });
+
+    node.removeClass("hidden").style("display","element");
+  }
+
+  function focusCircularPathContext(node) {
+    // Full clean view: circular path opens only itself and its phases.
+    cy.nodes('[kind="real"]').forEach(n => {
       n.addClass("hidden");
       n.style("display","none");
     });
@@ -650,31 +673,29 @@
         if (ai !== bi) return ai - bi;
         return (a.data("title") || "").localeCompare(b.data("title") || "");
       });
-      const spacing = 210;
+
+      const spacing = 230;
       const startX = center.x - ((nodes.length - 1) * spacing) / 2;
-      const y = center.y + 250;
+      const y = center.y + 260;
       nodes.forEach((n, i) => n.position({ x: startX + i * spacing, y }));
       return;
     }
 
     if (label === "ValueChainStage") {
       const phaseNodes = nodes.filter(n => n.data("label") === "Phase");
-      const stageNodes = nodes.filter(n => n.data("label") === "ValueChainStage");
-      const otherNodes = nodes.filter(n => n.data("label") !== "Phase" && n.data("label") !== "ValueChainStage");
+      const circularNodes = nodes.filter(n => n.data("label") === "CircularPath");
+      const otherNodes = nodes.filter(n =>
+        n.data("label") !== "Phase" &&
+        n.data("label") !== "CircularPath"
+      );
 
       phaseNodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
-      stageNodes.sort((a,b) => stageRank(a.data("title")) - stageRank(b.data("title")));
 
-      const phaseSpacing = 145;
+      const phaseSpacing = 150;
       const startX = center.x - ((phaseNodes.length - 1) * phaseSpacing) / 2;
-      phaseNodes.forEach((n, i) => n.position({ x: startX + i * phaseSpacing, y: center.y + 240 }));
+      phaseNodes.forEach((n, i) => n.position({ x: startX + i * phaseSpacing, y: center.y + 250 }));
 
-      stageNodes.forEach((n, i) => {
-        const rankN = stageRank(n.data("title"));
-        const rankC = stageRank(centerNode.data("title"));
-        const x = rankN < rankC ? center.x - 260 : center.x + 260;
-        n.position({ x, y: center.y + (i * 70) });
-      });
+      circularNodes.forEach((n, i) => n.position({ x: center.x - 230 + i * 230, y: center.y + 90 }));
 
       const radius = 240;
       otherNodes.forEach((n, i) => {
@@ -685,14 +706,39 @@
     }
 
     if (label === "CircularPath") {
-      nodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
-      const spacing = 145;
-      const startX = center.x - ((nodes.length - 1) * spacing) / 2;
-      nodes.forEach((n, i) => n.position({ x: startX + i * spacing, y: center.y + 240 }));
+      const phaseNodes = nodes.filter(n => n.data("label") === "Phase");
+      const otherNodes = nodes.filter(n => n.data("label") !== "Phase");
+      phaseNodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
+
+      const spacing = 150;
+      const startX = center.x - ((phaseNodes.length - 1) * spacing) / 2;
+      phaseNodes.forEach((n, i) => n.position({ x: startX + i * spacing, y: center.y + 250 }));
+
+      otherNodes.forEach((n, i) => n.position({ x: center.x + 230 * (i + 1), y: center.y }));
       return;
     }
 
-    const radius = label === "Phase" ? 240 : 200;
+    if (label === "Phase") {
+      const phaseNodes = nodes.filter(n => n.data("label") === "Phase");
+      const innovationNodes = nodes.filter(n => n.data("label") === "Innovation");
+      const demoNodes = nodes.filter(n => n.data("label") === "Demonstration");
+      const partnerNodes = nodes.filter(n => n.data("label") === "Partner");
+      const otherNodes = nodes.filter(n => !["Phase", "Innovation", "Demonstration", "Partner"].includes(n.data("label")));
+
+      phaseNodes.sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
+      phaseNodes.forEach((n, i) => {
+        const direction = getPhaseNumber(n) < getPhaseNumber(centerNode) ? -1 : 1;
+        n.position({ x: center.x + direction * (220 + i * 120), y: center.y });
+      });
+
+      innovationNodes.forEach((n, i) => n.position({ x: center.x - 220 + i * 170, y: center.y - 230 }));
+      demoNodes.forEach((n, i) => n.position({ x: center.x - 220 + i * 170, y: center.y + 230 }));
+      partnerNodes.forEach((n, i) => n.position({ x: center.x + 260, y: center.y - 120 + i * 120 }));
+      otherNodes.forEach((n, i) => n.position({ x: center.x - 260, y: center.y - 120 + i * 120 }));
+      return;
+    }
+
+    const radius = 220;
     const count = nodes.length;
     nodes.forEach((n, i) => {
       const angle = count === 1 ? -Math.PI / 2 : (-Math.PI / 2) + (2 * Math.PI * i) / count;
@@ -712,6 +758,8 @@
 
     if (nodeLabel === "Material") focusMaterialContext(node);
     if (nodeLabel === "ValueChainStage") focusStageContext(node);
+    if (nodeLabel === "Phase") focusPhaseContext(node);
+    if (nodeLabel === "CircularPath") focusCircularPathContext(node);
 
     const toShowIds = getSmartNeighborIds(node);
     const visibleIds = new Set(toShowIds);
