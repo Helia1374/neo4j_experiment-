@@ -616,22 +616,17 @@
     return Array.from(seen).map(id => cy.getElementById(id)).filter(n => n.length);
   }
 
-  function getStablePhaseContextIds(phaseNode) {
-    const phaseNodes = getConnectedPhaseChain(phaseNode);
-    const visible = new Set(phaseNodes.map(n => n.id()));
-
-    phaseNodes.forEach(p => {
-      visibleRealEdgesFrom(p).forEach(e => {
-        const other = e.source().id() === p.id() ? e.target() : e.source();
-        const lbl = other.data("label");
-        if (["ValueChainStage", "CircularPath"].includes(lbl)) visible.add(other.id());
-      });
-    });
+  function getDirectPhaseContextIds(phaseNode) {
+    const visible = new Set();
 
     visibleRealEdgesFrom(phaseNode).forEach(e => {
       const other = e.source().id() === phaseNode.id() ? e.target() : e.source();
       const lbl = other.data("label");
-      if (["Innovation", "Demonstration", "Partner"].includes(lbl)) visible.add(other.id());
+
+      // Step-by-step only: show directly linked phases, not the whole phase chain.
+      if (["Phase", "Innovation", "Demonstration", "Partner", "ValueChainStage", "CircularPath"].includes(lbl)) {
+        visible.add(other.id());
+      }
     });
 
     return Array.from(visible);
@@ -739,9 +734,26 @@
       const partners = nodes.filter(n => n.data("label") === "Partner");
       const others = nodes.filter(n => !["Phase", "ValueChainStage", "CircularPath", "Innovation", "Demonstration", "Partner"].includes(n.data("label")));
 
-      layoutLine(phases, center.y, center.x, 145);
+      // Step-by-step rule:
+      // 1 linked phase = straight expansion.
+      // 2+ linked phases = semi-circle around the clicked phase.
+      if (phases.length === 1) {
+        const direction = getPhaseNumber(phases[0]) < getPhaseNumber(centerNode) ? -1 : 1;
+        phases[0].position({ x: center.x + direction * 240, y: center.y });
+      } else {
+        placeSingleOrArc(centerNode, phases, {
+          radius: 280,
+          singleOffsetX: 240,
+          singleOffsetY: 0,
+          arcStart: -Math.PI * 0.65,
+          arcEnd: Math.PI * 0.65
+        });
+      }
+
+      // Anchors are shown only if directly connected to this phase.
       stages.forEach((n,i) => n.position({ x: center.x - 220 + i * 220, y: center.y - 250 }));
       circulars.forEach((n,i) => n.position({ x: center.x - 220 + i * 220, y: center.y + 250 }));
+
       placeSingleOrArc(centerNode, innovations, { radius: 300, singleOffsetX: -260, singleOffsetY: -180, arcStart: -Math.PI, arcEnd: -Math.PI / 2 });
       placeSingleOrArc(centerNode, demos, { radius: 300, singleOffsetX: -260, singleOffsetY: 180, arcStart: Math.PI / 2, arcEnd: Math.PI });
       placeSingleOrArc(centerNode, partners, { radius: 270, singleOffsetX: 280, singleOffsetY: 0, arcStart: -Math.PI / 3, arcEnd: Math.PI / 3 });
@@ -764,7 +776,7 @@
 
     focusOnly(node);
 
-    const toShowIds = nodeLabel === "Phase" ? getStablePhaseContextIds(node) : getSmartNeighborIds(node);
+    const toShowIds = nodeLabel === "Phase" ? getDirectPhaseContextIds(node) : getSmartNeighborIds(node);
     const visibleIds = new Set(toShowIds);
     visibleIds.add(node.id());
 
