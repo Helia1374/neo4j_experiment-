@@ -655,7 +655,11 @@
     if (label === "Material") allowedLabels = ["ValueChainStage"];
     else if (label === "ValueChainStage") allowedLabels = ["Phase", "CircularPath", "Innovation", "Demonstration", "Partner"];
     else if (label === "CircularPath") allowedLabels = ["Phase"];
-    else if (label === "Phase") allowedLabels = ["Phase", "Innovation", "Demonstration", "Partner", "ValueChainStage", "CircularPath"];
+    else if(label === "Phase") allowedLabels = ["Phase", "Innovation", "Demonstration", "Partner", "ValueChainStage", "CircularPath"];
+    else if(label === "KeyExploitableResult") allowedLabels = ["Partner", "Innovation", "Demonstration", "Deliverable", "Publication"];
+    else if(label === "Partner") allowedLabels = ["KeyExploitableResult", "Innovation", "Demonstration", "Deliverable", "Publication"];
+    else if(label === "Innovation") allowedLabels = ["KeyExploitableResult", "Partner", "Demonstration", "Deliverable", "Phase", "ValueChainStage"];
+    else if(label === "Demonstration") allowedLabels = ["KeyExploitableResult", "Partner", "Innovation", "Phase", "ValueChainStage"];
 
     let neigh = visibleRealEdgesFrom(node)
       .connectedNodes()
@@ -741,7 +745,7 @@
       return;
     }
 
-    if (label === "Phase") {
+    if(label === "Phase"){
       const phases = nodes.filter(n => n.data("label") === "Phase").sort((a,b) => getPhaseNumber(a) - getPhaseNumber(b));
       const stages = nodes.filter(n => n.data("label") === "ValueChainStage");
       const circulars = nodes.filter(n => n.data("label") === "CircularPath");
@@ -750,34 +754,40 @@
       const partners = nodes.filter(n => n.data("label") === "Partner");
       const others = nodes.filter(n => !["Phase", "ValueChainStage", "CircularPath", "Innovation", "Demonstration", "Partner"].includes(n.data("label")));
 
-      // Step-by-step rule:
-      // 1 linked phase = straight expansion.
-      // 2+ linked phases = semi-circle around the clicked phase.
-      if (phases.length === 1) {
+      if(phases.length === 1){
         const direction = getPhaseNumber(phases[0]) < getPhaseNumber(centerNode) ? -1 : 1;
-        phases[0].position({ x: center.x + direction * 240, y: center.y });
+        phases[0].position({x:center.x + direction * 240, y:center.y});
       } else {
-        placeSingleOrArc(centerNode, phases, {
-          radius: 280,
-          singleOffsetX: 240,
-          singleOffsetY: 0,
-          arcStart: -Math.PI * 0.65,
-          arcEnd: Math.PI * 0.65
-        });
+        placeSingleOrArc(centerNode, phases, {radius:280, singleOffsetX:240, singleOffsetY:0, arcStart:-Math.PI*0.65, arcEnd:Math.PI*0.65});
       }
 
-      // Anchors are shown only if directly connected to this phase.
-      stages.forEach((n,i) => n.position({ x: center.x - 220 + i * 220, y: center.y - 250 }));
-      circulars.forEach((n,i) => n.position({ x: center.x - 220 + i * 220, y: center.y + 250 }));
-
-      placeSingleOrArc(centerNode, innovations, { radius: 300, singleOffsetX: -260, singleOffsetY: -180, arcStart: -Math.PI, arcEnd: -Math.PI / 2 });
-      placeSingleOrArc(centerNode, demos, { radius: 300, singleOffsetX: -260, singleOffsetY: 180, arcStart: Math.PI / 2, arcEnd: Math.PI });
-      placeSingleOrArc(centerNode, partners, { radius: 270, singleOffsetX: 280, singleOffsetY: 0, arcStart: -Math.PI / 3, arcEnd: Math.PI / 3 });
-      placeSingleOrArc(centerNode, others, { radius: 240, singleOffsetX: -280, singleOffsetY: 0 });
+      stages.forEach((n,i) => n.position({x:center.x - 220 + i*220, y:center.y - 250}));
+      circulars.forEach((n,i) => n.position({x:center.x - 220 + i*220, y:center.y + 250}));
+      placeSingleOrArc(centerNode, innovations, {radius:300, singleOffsetX:-260, singleOffsetY:-180, arcStart:-Math.PI, arcEnd:-Math.PI/2});
+      placeSingleOrArc(centerNode, demos, {radius:300, singleOffsetX:-260, singleOffsetY:180, arcStart:Math.PI/2, arcEnd:Math.PI});
+      placeSingleOrArc(centerNode, partners, {radius:270, singleOffsetX:280, singleOffsetY:0, arcStart:-Math.PI/3, arcEnd:Math.PI/3});
+      placeSingleOrArc(centerNode, others, {radius:240, singleOffsetX:-280, singleOffsetY:0});
       return;
     }
 
-    placeSingleOrArc(centerNode, nodes, { radius: 230, singleOffsetX: 230, singleOffsetY: 0 });
+    if(label === "KeyExploitableResult"){
+      const partners = nodes.filter(n => n.data("label") === "Partner");
+      const innovations = nodes.filter(n => n.data("label") === "Innovation");
+      const demos = nodes.filter(n => n.data("label") === "Demonstration");
+      const deliverables = nodes.filter(n => n.data("label") === "Deliverable");
+      const publications = nodes.filter(n => n.data("label") === "Publication");
+      const others = nodes.filter(n => !["Partner", "Innovation", "Demonstration", "Deliverable", "Publication"].includes(n.data("label")));
+
+      placeSingleOrArc(centerNode, partners, {radius:280, singleOffsetX:260, singleOffsetY:0, arcStart:-Math.PI/3, arcEnd:Math.PI/3});
+      placeSingleOrArc(centerNode, innovations, {radius:300, singleOffsetX:-260, singleOffsetY:0, arcStart:Math.PI*0.65, arcEnd:Math.PI*1.35});
+      placeSingleOrArc(centerNode, demos, {radius:300, singleOffsetX:0, singleOffsetY:260, arcStart:Math.PI*0.15, arcEnd:Math.PI*0.85});
+      placeSingleOrArc(centerNode, deliverables, {radius:260, singleOffsetX:0, singleOffsetY:-260, arcStart:-Math.PI*0.85, arcEnd:-Math.PI*0.15});
+      placeSingleOrArc(centerNode, publications, {radius:340, singleOffsetX:-300, singleOffsetY:-180, arcStart:-Math.PI, arcEnd:-Math.PI/2});
+      placeSingleOrArc(centerNode, others, {radius:230, singleOffsetX:230, singleOffsetY:0});
+      return;
+    }
+
+    placeSingleOrArc(centerNode, nodes, {radius:230, singleOffsetX:230, singleOffsetY:0});
   }
 
   function expandRealNeighbors(node) {
