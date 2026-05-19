@@ -313,7 +313,7 @@
     if (label === "Deliverable") return asNiceText(p.deliverables_no) || asNiceText(p.deliverables_name) || asNiceText(d.id);
     if (label === "Demonstration") return asNiceText(p.name) || asNiceText(p.demonstrations) || asNiceText(p.demonstrations_type) || asNiceText(d.id);
     if (label === "Innovation") return asNiceText(p.innovations_name) || asNiceText(p.innovations) || asNiceText(d.id);
-    if (label === "KeyExploitableResult") return asNiceText(p.name) || asNiceText(d.id);
+    if (label === "KeyExploitableResult") return asNiceText(p.ker_id) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Standard") return asNiceText(p.standard_code) || asNiceText(p.standard_title) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Publication") return asNiceText(p.publication_title) || asNiceText(p.title) || asNiceText(p.name) || asNiceText(d.id);
     if (label === "Gap") return asNiceText(p.gap_id) || asNiceText(p.gap_name) || asNiceText(p.name) || asNiceText(d.id);
@@ -367,7 +367,23 @@
     const desc = getBestDescription(d);
     const descHtml = desc ? `<hr /><div class="sectionTitle">Description</div><div class="descBox">${renderValue(desc.value)}</div>` : "";
     const props = d.properties || {};
-    const nameKeys = ["name","title","publication_title","innovations_name","innovations","deliverables_name","deliverables_no","demonstrations","demonstrations_type","partners","partners_legalname","material","phase_id","phases","phase_path","standard_code","standard_title","gap_id","gap_name","recommendation_name","video","online_course","linkedin_post","linkdin_post"];
+    const nameKeys = [
+      "name",
+      "ker_id",
+      "type",
+      "trl",
+      "description",
+      "exploitation_intentions",
+      "title","publication_title",
+      "innovations_name","innovations",
+      "deliverables_name","deliverables_no",
+      "demonstrations","demonstrations_type",
+      "partners","partners_legalname",
+      "material","phase_id","phases","phase_path",
+      "standard_code","standard_title",
+      "gap_id","gap_name","recommendation_name",
+      "video","online_course","linkedin_post","linkdin_post"
+    ];
     const skipKeys = new Set(["color","title","kind","_placed","size","labels","label","logo"]);
     const descKey = desc?.key;
     function includeKey(k) {
